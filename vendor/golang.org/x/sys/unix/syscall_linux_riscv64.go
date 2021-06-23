@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build riscv64 && linux
 // +build riscv64,linux
 
 package unix
@@ -35,8 +34,8 @@ func Select(nfd int, r *FdSet, w *FdSet, e *FdSet, timeout *Timeval) (n int, err
 }
 
 //sys	sendfile(outfd int, infd int, offset *int64, count int) (written int, err error)
-//sys	setfsgid(gid int) (prev int, err error)
-//sys	setfsuid(uid int) (prev int, err error)
+//sys	Setfsgid(gid int) (err error)
+//sys	Setfsuid(uid int) (err error)
 //sysnb	Setregid(rgid int, egid int) (err error)
 //sysnb	Setresgid(rgid int, egid int, sgid int) (err error)
 //sysnb	Setresuid(ruid int, euid int, suid int) (err error)
@@ -137,6 +136,30 @@ func utimes(path string, tv *[2]Timeval) (err error) {
 	return utimensat(AT_FDCWD, path, (*[2]Timespec)(unsafe.Pointer(&ts[0])), 0)
 }
 
+func Pipe(p []int) (err error) {
+	if len(p) != 2 {
+		return EINVAL
+	}
+	var pp [2]_C_int
+	err = pipe2(&pp, 0)
+	p[0] = int(pp[0])
+	p[1] = int(pp[1])
+	return
+}
+
+//sysnb pipe2(p *[2]_C_int, flags int) (err error)
+
+func Pipe2(p []int, flags int) (err error) {
+	if len(p) != 2 {
+		return EINVAL
+	}
+	var pp [2]_C_int
+	err = pipe2(&pp, flags)
+	p[0] = int(pp[0])
+	p[1] = int(pp[1])
+	return
+}
+
 func (r *PtraceRegs) PC() uint64 { return r.Pc }
 
 func (r *PtraceRegs) SetPC(pc uint64) { r.Pc = pc }
@@ -157,8 +180,12 @@ func (cmsg *Cmsghdr) SetLen(length int) {
 	cmsg.Len = uint64(length)
 }
 
-func (rsa *RawSockaddrNFCLLCP) SetServiceNameLen(length int) {
-	rsa.Service_name_len = uint64(length)
+func InotifyInit() (fd int, err error) {
+	return InotifyInit1(0)
+}
+
+func Dup2(oldfd int, newfd int) (err error) {
+	return Dup3(oldfd, newfd, 0)
 }
 
 func Pause() error {
