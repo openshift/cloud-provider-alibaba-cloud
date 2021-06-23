@@ -1,5 +1,14 @@
-approvers:
+reviewers:
 - aoxn
 - cheyang 
 - xlgao-zju
 - gujingit
+
+approvers:
+- JoelSpeed
+- Danil-Grigorev
+- elmiko
+- lobziik
+
+component: "Cloud Compute"
+subcomponent: "Cloud Controller Manager"
