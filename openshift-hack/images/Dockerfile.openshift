@@ -1,0 +1,14 @@
+
+FROM registry.ci.openshift.org/ocp/builder:rhel-8-golang-1.20-openshift-4.15 AS builder
+
+WORKDIR /build
+COPY . .
+RUN make ccm-linux
+
+FROM registry.ci.openshift.org/ocp/4.15:base
+
+LABEL description="Alibaba Cloud Controller Manager"
+
+COPY --from=builder /build/build/bin/cloud-controller-manager.amd64 /bin/alibaba-cloud-controller-manager
+
+ENTRYPOINT [ "/bin/alibaba-cloud-controller-manager" ]
