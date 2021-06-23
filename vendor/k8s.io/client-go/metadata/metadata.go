@@ -23,7 +23,7 @@ import (
 	"net/http"
 	"time"
 
-	"k8s.io/klog/v2"
+	"k8s.io/klog"
 
 	metainternalversionscheme "k8s.io/apimachinery/pkg/apis/meta/internalversion/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
