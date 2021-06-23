@@ -1,6 +1,6 @@
 // Copyright 2019, The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// license that can be found in the LICENSE.md file.
 
 package cmp
 
@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"math"
 	"reflect"
-	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -25,35 +24,14 @@ func (opts formatOptions) CanFormatDiffSlice(v *valueNode) bool {
 		return false // Must be formatting in diff mode
 	case v.NumDiff == 0:
 		return false // No differences detected
+	case v.NumIgnored+v.NumCompared+v.NumTransformed > 0:
+		// TODO: Handle the case where someone uses bytes.Equal on a large slice.
+		return false // Some custom option was used to determined equality
 	case !v.ValueX.IsValid() || !v.ValueY.IsValid():
 		return false // Both values must be valid
-	case v.NumIgnored > 0:
-		return false // Some ignore option was used
-	case v.NumTransformed > 0:
-		return false // Some transform option was used
-	case v.NumCompared > 1:
-		return false // More than one comparison was used
-	case v.NumCompared == 1 && v.Type.Name() != "":
-		// The need for cmp to check applicability of options on every element
-		// in a slice is a significant performance detriment for large []byte.
-		// The workaround is to specify Comparer(bytes.Equal),
-		// which enables cmp to compare []byte more efficiently.
-		// If they differ, we still want to provide batched diffing.
-		// The logic disallows named types since they tend to have their own
-		// String method, with nicer formatting than what this provides.
-		return false
 	}
 
-	// Check whether this is an interface with the same concrete types.
-	t := v.Type
-	vx, vy := v.ValueX, v.ValueY
-	if t.Kind() == reflect.Interface && !vx.IsNil() && !vy.IsNil() && vx.Elem().Type() == vy.Elem().Type() {
-		vx, vy = vx.Elem(), vy.Elem()
-		t = vx.Type()
-	}
-
-	// Check whether we provide specialized diffing for this type.
-	switch t.Kind() {
+	switch t := v.Type; t.Kind() {
 	case reflect.String:
 	case reflect.Array, reflect.Slice:
 		// Only slices of primitive types have specialized handling.
@@ -62,11 +40,6 @@ func (opts formatOptions) CanFormatDiffSlice(v *valueNode) bool {
 			reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
 			reflect.Bool, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
 		default:
-			return false
-		}
-
-		// Both slice values have to be non-empty.
-		if t.Kind() == reflect.Slice && (vx.Len() == 0 || vy.Len() == 0) {
 			return false
 		}
 
@@ -80,8 +53,8 @@ func (opts formatOptions) CanFormatDiffSlice(v *valueNode) bool {
 	}
 
 	// Use specialized string diffing for longer slices or strings.
-	const minLength = 32
-	return vx.Len() >= minLength && vy.Len() >= minLength
+	const minLength = 64
+	return v.ValueX.Len() >= minLength && v.ValueY.Len() >= minLength
 }
 
 // FormatDiffSlice prints a diff for the slices (or strings) represented by v.
@@ -90,11 +63,6 @@ func (opts formatOptions) CanFormatDiffSlice(v *valueNode) bool {
 func (opts formatOptions) FormatDiffSlice(v *valueNode) textNode {
 	assert(opts.DiffMode == diffUnknown)
 	t, vx, vy := v.Type, v.ValueX, v.ValueY
-	if t.Kind() == reflect.Interface {
-		vx, vy = vx.Elem(), vy.Elem()
-		t = vx.Type()
-		opts = opts.WithTypeMode(emitType)
-	}
 
 	// Auto-detect the type of the data.
 	var sx, sy string
@@ -114,8 +82,9 @@ func (opts formatOptions) FormatDiffSlice(v *valueNode) textNode {
 		vy2.Set(vy)
 		vx, vy = vx2, vy2
 	}
-	if isString {
-		var numTotalRunes, numValidRunes, numLines, lastLineIdx, maxLineLen int
+	if isText || isBinary {
+		var numLines, lastLineIdx, maxLineLen int
+		isBinary = false
 		for i, r := range sx + sy {
 			numTotalRunes++
 			if (unicode.IsPrint(r) || unicode.IsSpace(r)) && r != utf8.RuneError {
@@ -123,32 +92,14 @@ func (opts formatOptions) FormatDiffSlice(v *valueNode) textNode {
 			}
 			if r == '\n' {
 				if maxLineLen < i-lastLineIdx {
-					maxLineLen = i - lastLineIdx
+					lastLineIdx = i - lastLineIdx
 				}
 				lastLineIdx = i + 1
 				numLines++
 			}
 		}
-		isPureText := numValidRunes == numTotalRunes
-		isMostlyText = float64(numValidRunes) > math.Floor(0.90*float64(numTotalRunes))
-		isPureLinedText = isPureText && numLines >= 4 && maxLineLen <= 1024
-		isBinary = !isMostlyText
-
-		// Avoid diffing by lines if it produces a significantly more complex
-		// edit script than diffing by bytes.
-		if isPureLinedText {
-			ssx = strings.Split(sx, "\n")
-			ssy = strings.Split(sy, "\n")
-			esLines := diff.Difference(len(ssx), len(ssy), func(ix, iy int) diff.Result {
-				return diff.BoolResult(ssx[ix] == ssy[iy])
-			})
-			esBytes := diff.Difference(len(sx), len(sy), func(ix, iy int) diff.Result {
-				return diff.BoolResult(sx[ix] == sy[iy])
-			})
-			efficiencyLines := float64(esLines.Dist()) / float64(len(esLines))
-			efficiencyBytes := float64(esBytes.Dist()) / float64(len(esBytes))
-			isPureLinedText = efficiencyLines < 4*efficiencyBytes
-		}
+		isText = !isBinary
+		isLinedText = isText && numLines >= 4 && maxLineLen <= 256
 	}
 
 	// Format the string into printable records.
@@ -166,83 +117,6 @@ func (opts formatOptions) FormatDiffSlice(v *valueNode) textNode {
 			},
 		)
 		delim = "\n"
-
-		// If possible, use a custom triple-quote (""") syntax for printing
-		// differences in a string literal. This format is more readable,
-		// but has edge-cases where differences are visually indistinguishable.
-		// This format is avoided under the following conditions:
-		//	• A line starts with `"""`
-		//	• A line starts with "..."
-		//	• A line contains non-printable characters
-		//	• Adjacent different lines differ only by whitespace
-		//
-		// For example:
-		//		"""
-		//		... // 3 identical lines
-		//		foo
-		//		bar
-		//	-	baz
-		//	+	BAZ
-		//		"""
-		isTripleQuoted := true
-		prevRemoveLines := map[string]bool{}
-		prevInsertLines := map[string]bool{}
-		var list2 textList
-		list2 = append(list2, textRecord{Value: textLine(`"""`), ElideComma: true})
-		for _, r := range list {
-			if !r.Value.Equal(textEllipsis) {
-				line, _ := strconv.Unquote(string(r.Value.(textLine)))
-				line = strings.TrimPrefix(strings.TrimSuffix(line, "\r"), "\r") // trim leading/trailing carriage returns for legacy Windows endline support
-				normLine := strings.Map(func(r rune) rune {
-					if unicode.IsSpace(r) {
-						return -1 // drop whitespace to avoid visually indistinguishable output
-					}
-					return r
-				}, line)
-				isPrintable := func(r rune) bool {
-					return unicode.IsPrint(r) || r == '\t' // specially treat tab as printable
-				}
-				isTripleQuoted = !strings.HasPrefix(line, `"""`) && !strings.HasPrefix(line, "...") && strings.TrimFunc(line, isPrintable) == ""
-				switch r.Diff {
-				case diffRemoved:
-					isTripleQuoted = isTripleQuoted && !prevInsertLines[normLine]
-					prevRemoveLines[normLine] = true
-				case diffInserted:
-					isTripleQuoted = isTripleQuoted && !prevRemoveLines[normLine]
-					prevInsertLines[normLine] = true
-				}
-				if !isTripleQuoted {
-					break
-				}
-				r.Value = textLine(line)
-				r.ElideComma = true
-			}
-			if !(r.Diff == diffRemoved || r.Diff == diffInserted) { // start a new non-adjacent difference group
-				prevRemoveLines = map[string]bool{}
-				prevInsertLines = map[string]bool{}
-			}
-			list2 = append(list2, r)
-		}
-		if r := list2[len(list2)-1]; r.Diff == diffIdentical && len(r.Value.(textLine)) == 0 {
-			list2 = list2[:len(list2)-1] // elide single empty line at the end
-		}
-		list2 = append(list2, textRecord{Value: textLine(`"""`), ElideComma: true})
-		if isTripleQuoted {
-			var out textNode = &textWrap{Prefix: "(", Value: list2, Suffix: ")"}
-			switch t.Kind() {
-			case reflect.String:
-				if t != reflect.TypeOf(string("")) {
-					out = opts.FormatType(t, out)
-				}
-			case reflect.Slice:
-				// Always emit type for slices since the triple-quote syntax
-				// looks like a string (not a slice).
-				opts = opts.WithTypeMode(emitType)
-				out = opts.FormatType(t, out)
-			}
-			return out
-		}
-
 	// If the text appears to be single-lined text,
 	// then perform differencing in approximately fixed-sized chunks.
 	// The output is printed as quoted strings.
@@ -254,7 +128,7 @@ func (opts formatOptions) FormatDiffSlice(v *valueNode) textNode {
 				return textRecord{Diff: d, Value: textLine(s)}
 			},
 		)
-
+		delim = ""
 	// If the text appears to be binary data,
 	// then perform differencing in approximately fixed-sized chunks.
 	// The output is inspired by hexdump.
@@ -271,7 +145,6 @@ func (opts formatOptions) FormatDiffSlice(v *valueNode) textNode {
 				return textRecord{Diff: d, Value: textLine(s), Comment: comment}
 			},
 		)
-
 	// For all other slices of primitive types,
 	// then perform differencing in approximately fixed-sized chunks.
 	// The size of each chunk depends on the width of the element kind.
@@ -299,9 +172,7 @@ func (opts formatOptions) FormatDiffSlice(v *valueNode) textNode {
 					switch t.Elem().Kind() {
 					case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 						ss = append(ss, fmt.Sprint(v.Index(i).Int()))
-					case reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-						ss = append(ss, fmt.Sprint(v.Index(i).Uint()))
-					case reflect.Uint8, reflect.Uintptr:
+					case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 						ss = append(ss, formatHex(v.Index(i).Uint()))
 					case reflect.Bool, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
 						ss = append(ss, fmt.Sprint(v.Index(i).Interface()))
@@ -314,8 +185,8 @@ func (opts formatOptions) FormatDiffSlice(v *valueNode) textNode {
 	}
 
 	// Wrap the output with appropriate type information.
-	var out textNode = &textWrap{Prefix: "{", Value: list, Suffix: "}"}
-	if !isMostlyText {
+	var out textNode = textWrap{"{", list, "}"}
+	if !isText {
 		// The "{...}" byte-sequence literal is not valid Go syntax for strings.
 		// Emit the type for extra clarity (e.g. "string{...}").
 		if t.Kind() == reflect.String {
@@ -325,12 +196,12 @@ func (opts formatOptions) FormatDiffSlice(v *valueNode) textNode {
 	}
 	switch t.Kind() {
 	case reflect.String:
-		out = &textWrap{Prefix: "strings.Join(", Value: out, Suffix: fmt.Sprintf(", %q)", delim)}
+		out = textWrap{"strings.Join(", out, fmt.Sprintf(", %q)", delim)}
 		if t != reflect.TypeOf(string("")) {
 			out = opts.FormatType(t, out)
 		}
 	case reflect.Slice:
-		out = &textWrap{Prefix: "bytes.Join(", Value: out, Suffix: fmt.Sprintf(", %q)", delim)}
+		out = textWrap{"bytes.Join(", out, fmt.Sprintf(", %q)", delim)}
 		if t != reflect.TypeOf([]byte(nil)) {
 			out = opts.FormatType(t, out)
 		}
@@ -374,23 +245,9 @@ func (opts formatOptions) formatDiffSlice(
 		return n0 - v.Len()
 	}
 
-	var numDiffs int
-	maxLen := -1
-	if opts.LimitVerbosity {
-		maxLen = (1 << opts.verbosity()) << 2 // 4, 8, 16, 32, 64, etc...
-		opts.VerbosityLevel--
-	}
-
 	groups := coalesceAdjacentEdits(name, es)
 	groups = coalesceInterveningIdentical(groups, chunkSize/4)
-	groups = cleanupSurroundingIdentical(groups, eq)
-	maxGroup := diffStats{Name: name}
 	for i, ds := range groups {
-		if maxLen >= 0 && numDiffs >= maxLen {
-			maxGroup = maxGroup.Append(ds)
-			continue
-		}
-
 		// Print equal.
 		if ds.NumDiff() == 0 {
 			// Compute the number of leading and trailing equal bytes to print.
@@ -419,18 +276,12 @@ func (opts formatOptions) formatDiffSlice(
 		}
 
 		// Print unequal.
-		len0 := len(list)
 		nx := appendChunks(vx.Slice(0, ds.NumIdentical+ds.NumRemoved+ds.NumModified), diffRemoved)
 		vx = vx.Slice(nx, vx.Len())
 		ny := appendChunks(vy.Slice(0, ds.NumIdentical+ds.NumInserted+ds.NumModified), diffInserted)
 		vy = vy.Slice(ny, vy.Len())
-		numDiffs += len(list) - len0
 	}
-	if maxGroup.IsZero() {
-		assert(vx.Len() == 0 && vy.Len() == 0)
-	} else {
-		list.AppendEllipsis(maxGroup)
-	}
+	assert(vx.Len() == 0 && vy.Len() == 0)
 	return list
 }
 
@@ -514,7 +365,7 @@ func coalesceInterveningIdentical(groups []diffStats, windowSize int) []diffStat
 			hadX, hadY := prev.NumRemoved > 0, prev.NumInserted > 0
 			hasX, hasY := next.NumRemoved > 0, next.NumInserted > 0
 			if ((hadX || hasX) && (hadY || hasY)) && curr.NumIdentical <= windowSize {
-				*prev = prev.Append(*curr).Append(*next)
+				*prev = (*prev).Append(*curr).Append(*next)
 				groups = groups[:len(groups)-1] // Truncate off equal group
 				continue
 			}

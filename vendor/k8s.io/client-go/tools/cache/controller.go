@@ -70,12 +70,6 @@ type Config struct {
 	//       question to this interface as a parameter.  This is probably moot
 	//       now that this functionality appears at a higher level.
 	RetryOnError bool
-
-	// Called whenever the ListAndWatch drops the connection with an error.
-	WatchErrorHandler WatchErrorHandler
-
-	// WatchListPageSize is the requested chunk size of initial and relist watch lists.
-	WatchListPageSize int64
 }
 
 // ShouldResyncFunc is a type of function that indicates if a reflector should perform a
@@ -138,22 +132,18 @@ func (c *controller) Run(stopCh <-chan struct{}) {
 		c.config.FullResyncPeriod,
 	)
 	r.ShouldResync = c.config.ShouldResync
-	r.WatchListPageSize = c.config.WatchListPageSize
 	r.clock = c.clock
-	if c.config.WatchErrorHandler != nil {
-		r.watchErrorHandler = c.config.WatchErrorHandler
-	}
 
 	c.reflectorMutex.Lock()
 	c.reflector = r
 	c.reflectorMutex.Unlock()
 
 	var wg wait.Group
+	defer wg.Wait()
 
 	wg.StartWithChannel(stopCh, r.Run)
 
 	wait.Until(c.processLoop, time.Second, stopCh)
-	wg.Wait()
 }
 
 // Returns true once this controller has completed an initial resource listing
@@ -194,22 +184,20 @@ func (c *controller) processLoop() {
 	}
 }
 
-// ResourceEventHandler can handle notifications for events that
-// happen to a resource. The events are informational only, so you
-// can't return an error.  The handlers MUST NOT modify the objects
-// received; this concerns not only the top level of structure but all
-// the data structures reachable from it.
-//   - OnAdd is called when an object is added.
-//   - OnUpdate is called when an object is modified. Note that oldObj is the
-//     last known state of the object-- it is possible that several changes
-//     were combined together, so you can't use this to see every single
-//     change. OnUpdate is also called when a re-list happens, and it will
-//     get called even if nothing changed. This is useful for periodically
-//     evaluating or syncing something.
-//   - OnDelete will get the final state of the item if it is known, otherwise
-//     it will get an object of type DeletedFinalStateUnknown. This can
-//     happen if the watch is closed and misses the delete event and we don't
-//     notice the deletion until the subsequent re-list.
+// ResourceEventHandler can handle notifications for events that happen to a
+// resource. The events are informational only, so you can't return an
+// error.
+//  * OnAdd is called when an object is added.
+//  * OnUpdate is called when an object is modified. Note that oldObj is the
+//      last known state of the object-- it is possible that several changes
+//      were combined together, so you can't use this to see every single
+//      change. OnUpdate is also called when a re-list happens, and it will
+//      get called even if nothing changed. This is useful for periodically
+//      evaluating or syncing something.
+//  * OnDelete will get the final state of the item if it is known, otherwise
+//      it will get an object of type DeletedFinalStateUnknown. This can
+//      happen if the watch is closed and misses the delete event and we don't
+//      notice the deletion until the subsequent re-list.
 type ResourceEventHandler interface {
 	OnAdd(obj interface{})
 	OnUpdate(oldObj, newObj interface{})
@@ -218,8 +206,7 @@ type ResourceEventHandler interface {
 
 // ResourceEventHandlerFuncs is an adaptor to let you easily specify as many or
 // as few of the notification functions as you want while still implementing
-// ResourceEventHandler.  This adapter does not remove the prohibition against
-// modifying the objects.
+// ResourceEventHandler.
 type ResourceEventHandlerFuncs struct {
 	AddFunc    func(obj interface{})
 	UpdateFunc func(oldObj, newObj interface{})
@@ -251,7 +238,6 @@ func (r ResourceEventHandlerFuncs) OnDelete(obj interface{}) {
 // in, ensuring the appropriate nested handler method is invoked. An object
 // that starts passing the filter after an update is considered an add, and an
 // object that stops passing the filter after an update is considered a delete.
-// Like the handlers, the filter MUST NOT modify the objects it is given.
 type FilteringResourceEventHandler struct {
 	FilterFunc func(obj interface{}) bool
 	Handler    ResourceEventHandler
@@ -325,7 +311,7 @@ func NewInformer(
 	return clientState, newInformer(lw, objType, resyncPeriod, h, clientState, nil)
 }
 
-// NewIndexerInformer returns an Indexer and a Controller for populating the index
+// NewIndexerInformer returns a Indexer and a controller for populating the index
 // while also providing event notifications. You should only used the returned
 // Index for Get/List operations; Add/Modify/Deletes will cause the event
 // notifications to be faulty.

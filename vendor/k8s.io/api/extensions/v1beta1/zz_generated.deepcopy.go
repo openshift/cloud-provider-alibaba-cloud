@@ -918,11 +918,6 @@ func (in *NetworkPolicyPort) DeepCopyInto(out *NetworkPolicyPort) {
 		*out = new(intstr.IntOrString)
 		**out = **in
 	}
-	if in.EndPort != nil {
-		in, out := &in.EndPort, &out.EndPort
-		*out = new(int32)
-		**out = **in
-	}
 	return
 }
 
@@ -1299,11 +1294,6 @@ func (in *RollingUpdateDaemonSet) DeepCopyInto(out *RollingUpdateDaemonSet) {
 	*out = *in
 	if in.MaxUnavailable != nil {
 		in, out := &in.MaxUnavailable, &out.MaxUnavailable
-		*out = new(intstr.IntOrString)
-		**out = **in
-	}
-	if in.MaxSurge != nil {
-		in, out := &in.MaxSurge, &out.MaxSurge
 		*out = new(intstr.IntOrString)
 		**out = **in
 	}

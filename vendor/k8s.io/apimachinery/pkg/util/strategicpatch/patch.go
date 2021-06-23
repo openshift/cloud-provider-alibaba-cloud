@@ -987,10 +987,10 @@ func validatePatchWithSetOrderList(patchList, setOrderList interface{}, mergeKey
 		return nil
 	}
 
-	var nonDeleteList []interface{}
+	var nonDeleteList, toDeleteList []interface{}
 	var err error
 	if len(mergeKey) > 0 {
-		nonDeleteList, _, err = extractToDeleteItems(typedPatchList)
+		nonDeleteList, toDeleteList, err = extractToDeleteItems(typedPatchList)
 		if err != nil {
 			return err
 		}
@@ -1018,6 +1018,7 @@ func validatePatchWithSetOrderList(patchList, setOrderList interface{}, mergeKey
 	if patchIndex < len(nonDeleteList) && setOrderIndex >= len(typedSetOrderList) {
 		return fmt.Errorf("The order in patch list:\n%v\n doesn't match %s list:\n%v\n", typedPatchList, setElementOrderDirectivePrefix, setOrderList)
 	}
+	typedPatchList = append(nonDeleteList, toDeleteList...)
 	return nil
 }
 
@@ -1320,7 +1321,9 @@ func mergeMap(original, patch map[string]interface{}, schema LookupPatchMeta, me
 		// Preserving the null value is useful when we want to send an explicit
 		// delete to the API server.
 		if patchV == nil {
-			delete(original, k)
+			if _, ok := original[k]; ok {
+				delete(original, k)
+			}
 			if mergeOptions.IgnoreUnmatchedNulls {
 				continue
 			}

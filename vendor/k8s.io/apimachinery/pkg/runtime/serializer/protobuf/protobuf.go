@@ -62,7 +62,6 @@ func (e errNotMarshalable) Status() metav1.Status {
 	}
 }
 
-// IsNotMarshalable checks the type of error, returns a boolean true if error is not nil and not marshalable false otherwise
 func IsNotMarshalable(err error) bool {
 	_, ok := err.(errNotMarshalable)
 	return err != nil && ok
@@ -79,7 +78,6 @@ func NewSerializer(creater runtime.ObjectCreater, typer runtime.ObjectTyper) *Se
 	}
 }
 
-// Serializer handles encoding versioned objects into the proper wire form
 type Serializer struct {
 	prefix  []byte
 	creater runtime.ObjectCreater
@@ -122,7 +120,7 @@ func (s *Serializer) Decode(originalData []byte, gvk *schema.GroupVersionKind, i
 
 	if intoUnknown, ok := into.(*runtime.Unknown); ok && intoUnknown != nil {
 		*intoUnknown = unk
-		if ok, _, _ := s.RecognizesData(unk.Raw); ok {
+		if ok, _, _ := s.RecognizesData(bytes.NewBuffer(unk.Raw)); ok {
 			intoUnknown.ContentType = runtime.ContentTypeProtobuf
 		}
 		return intoUnknown, &actual, nil
@@ -261,8 +259,19 @@ func (s *Serializer) Identifier() runtime.Identifier {
 }
 
 // RecognizesData implements the RecognizingDecoder interface.
-func (s *Serializer) RecognizesData(data []byte) (bool, bool, error) {
-	return bytes.HasPrefix(data, s.prefix), false, nil
+func (s *Serializer) RecognizesData(peek io.Reader) (bool, bool, error) {
+	prefix := make([]byte, 4)
+	n, err := peek.Read(prefix)
+	if err != nil {
+		if err == io.EOF {
+			return false, false, nil
+		}
+		return false, false, err
+	}
+	if n != 4 {
+		return false, false, nil
+	}
+	return bytes.Equal(s.prefix, prefix), false, nil
 }
 
 // copyKindDefaults defaults dst to the value in src if dst does not have a value set.
@@ -478,10 +487,8 @@ func (s *RawSerializer) Identifier() runtime.Identifier {
 	return rawSerializerIdentifier
 }
 
-// LengthDelimitedFramer is exported variable of type lengthDelimitedFramer
 var LengthDelimitedFramer = lengthDelimitedFramer{}
 
-// Provides length delimited frame reader and writer methods
 type lengthDelimitedFramer struct{}
 
 // NewFrameWriter implements stream framing for this serializer

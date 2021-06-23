@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"k8s.io/klog/v2"
+	"k8s.io/klog"
 )
 
 var (
@@ -80,7 +80,7 @@ func logPanic(r interface{}) {
 	}
 }
 
-// ErrorHandlers is a list of functions which will be invoked when a nonreturnable
+// ErrorHandlers is a list of functions which will be invoked when an unreturnable
 // error occurs.
 // TODO(lavalamp): for testability, this and the below HandleError function
 // should be packaged up into a testable and reusable object.
@@ -166,7 +166,7 @@ func RecoverFromPanic(err *error) {
 	}
 }
 
-// Must panics on non-nil errors. Useful to handling programmer level errors.
+// Must panics on non-nil errors.  Useful to handling programmer level errors.
 func Must(err error) {
 	if err != nil {
 		panic(err)
