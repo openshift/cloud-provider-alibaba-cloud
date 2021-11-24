@@ -29,7 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/serializer/recognizer"
 	"k8s.io/apimachinery/pkg/util/framer"
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 // NewSerializer creates a JSON serializer that handles encoding versioned objects into the proper JSON form. If typer
@@ -95,6 +95,7 @@ type SerializerOptions struct {
 	Strict bool
 }
 
+// Serializer handles encoding versioned objects into the proper JSON form
 type Serializer struct {
 	meta    MetaFactory
 	options SerializerOptions
@@ -143,10 +144,10 @@ func (customNumberDecoder) Decode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 	}
 }
 
-// CaseSensitiveJsonIterator returns a jsoniterator API that's configured to be
+// CaseSensitiveJSONIterator returns a jsoniterator API that's configured to be
 // case-sensitive when unmarshalling, and otherwise compatible with
 // the encoding/json standard library.
-func CaseSensitiveJsonIterator() jsoniter.API {
+func CaseSensitiveJSONIterator() jsoniter.API {
 	config := jsoniter.Config{
 		EscapeHTML:             true,
 		SortMapKeys:            true,
@@ -158,10 +159,10 @@ func CaseSensitiveJsonIterator() jsoniter.API {
 	return config
 }
 
-// StrictCaseSensitiveJsonIterator returns a jsoniterator API that's configured to be
+// StrictCaseSensitiveJSONIterator returns a jsoniterator API that's configured to be
 // case-sensitive, but also disallows unknown fields when unmarshalling. It is compatible with
 // the encoding/json standard library.
-func StrictCaseSensitiveJsonIterator() jsoniter.API {
+func StrictCaseSensitiveJSONIterator() jsoniter.API {
 	config := jsoniter.Config{
 		EscapeHTML:             true,
 		SortMapKeys:            true,
@@ -178,8 +179,8 @@ func StrictCaseSensitiveJsonIterator() jsoniter.API {
 // from outside. Still does not protect from package level jsoniter.Register*() functions - someone calling them
 // in some other library will mess with every usage of the jsoniter library in the whole program.
 // See https://github.com/json-iterator/go/issues/265
-var caseSensitiveJsonIterator = CaseSensitiveJsonIterator()
-var strictCaseSensitiveJsonIterator = StrictCaseSensitiveJsonIterator()
+var caseSensitiveJSONIterator = CaseSensitiveJSONIterator()
+var strictCaseSensitiveJSONIterator = StrictCaseSensitiveJSONIterator()
 
 // gvkWithDefaults returns group kind and version defaulting from provided default
 func gvkWithDefaults(actual, defaultGVK schema.GroupVersionKind) schema.GroupVersionKind {
@@ -235,7 +236,7 @@ func (s *Serializer) Decode(originalData []byte, gvk *schema.GroupVersionKind, i
 		types, _, err := s.typer.ObjectKinds(into)
 		switch {
 		case runtime.IsNotRegisteredError(err), isUnstructured:
-			if err := caseSensitiveJsonIterator.Unmarshal(data, into); err != nil {
+			if err := caseSensitiveJSONIterator.Unmarshal(data, into); err != nil {
 				return nil, actual, err
 			} else if len(strictErrs) > 0 {
 				return into, actual, runtime.NewStrictDecodingError(strictErrs)
@@ -261,7 +262,7 @@ func (s *Serializer) Decode(originalData []byte, gvk *schema.GroupVersionKind, i
 		return nil, actual, err
 	}
 
-	if err := caseSensitiveJsonIterator.Unmarshal(data, obj); err != nil {
+	if err := caseSensitiveJSONIterator.Unmarshal(data, obj); err != nil {
 		return nil, actual, err
 	}
 
@@ -288,7 +289,7 @@ func (s *Serializer) Decode(originalData []byte, gvk *schema.GroupVersionKind, i
 	// due to that a matching field doesn't exist in the object. hence we can return a typed strictDecoderError,
 	// the actual error is that the object contains unknown field.
 	strictObj := obj.DeepCopyObject()
-	if err := strictCaseSensitiveJsonIterator.Unmarshal(altered, strictObj); err != nil {
+	if err := strictCaseSensitiveJSONIterator.Unmarshal(altered, strictObj); err != nil {
 		return nil, actual, runtime.NewStrictDecodingError(err.Error(), string(originalData))
 	}
 	// Always return the same object as the non-strict serializer to avoid any deviations.
@@ -305,7 +306,7 @@ func (s *Serializer) Encode(obj runtime.Object, w io.Writer) error {
 
 func (s *Serializer) doEncode(obj runtime.Object, w io.Writer) error {
 	if s.options.Yaml {
-		json, err := caseSensitiveJsonIterator.Marshal(obj)
+		json, err := caseSensitiveJSONIterator.Marshal(obj)
 		if err != nil {
 			return err
 		}
@@ -318,7 +319,7 @@ func (s *Serializer) doEncode(obj runtime.Object, w io.Writer) error {
 	}
 
 	if s.options.Pretty {
-		data, err := caseSensitiveJsonIterator.MarshalIndent(obj, "", "  ")
+		data, err := caseSensitiveJSONIterator.MarshalIndent(obj, "", "  ")
 		if err != nil {
 			return err
 		}
@@ -379,13 +380,12 @@ func (s *Serializer) Identifier() runtime.Identifier {
 }
 
 // RecognizesData implements the RecognizingDecoder interface.
-func (s *Serializer) RecognizesData(peek io.Reader) (ok, unknown bool, err error) {
+func (s *Serializer) RecognizesData(data []byte) (ok, unknown bool, err error) {
 	if s.options.Yaml {
 		// we could potentially look for '---'
 		return false, true, nil
 	}
-	_, _, ok = utilyaml.GuessJSONStream(peek, 2048)
-	return ok, false, nil
+	return utilyaml.IsJSONBuffer(data), false, nil
 }
 
 // Framer is the default JSON framing behavior, with newlines delimiting individual objects.
