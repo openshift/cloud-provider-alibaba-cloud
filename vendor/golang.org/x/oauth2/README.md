@@ -16,15 +16,15 @@ Or you can manually git clone the repository to
 
 See pkg.go.dev for further documentation and examples.
 
-* [godoc.org/golang.org/x/oauth2](https://godoc.org/golang.org/x/oauth2)
-* [godoc.org/golang.org/x/oauth2/google](https://godoc.org/golang.org/x/oauth2/google)
+* [pkg.go.dev/golang.org/x/oauth2](https://pkg.go.dev/golang.org/x/oauth2)
+* [pkg.go.dev/golang.org/x/oauth2/google](https://pkg.go.dev/golang.org/x/oauth2/google)
 
 ## Policy for new packages
 
 We no longer accept new provider-specific packages in this repo if all
 they do is add a single endpoint variable. If you just want to add a
 single endpoint, add it to the
-[godoc.org/golang.org/x/oauth2/endpoints](https://godoc.org/golang.org/x/oauth2/endpoints)
+[pkg.go.dev/golang.org/x/oauth2/endpoints](https://pkg.go.dev/golang.org/x/oauth2/endpoints)
 package.
 
 ## Report Issues / Send Patches

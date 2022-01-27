@@ -23,68 +23,11 @@ import (
 	"k8s.io/utils/clock"
 )
 
-// PassiveClock allows for injecting fake or real clocks into code
-// that needs to read the current time but does not support scheduling
-// activity in the future.
-type PassiveClock interface {
-	Now() time.Time
-	Since(time.Time) time.Duration
-}
-
-// Clock allows for injecting fake or real clocks into code that
-// needs to do arbitrary things based on time.
-type Clock interface {
-	PassiveClock
-	After(time.Duration) <-chan time.Time
-	AfterFunc(time.Duration, func()) Timer
-	NewTimer(time.Duration) Timer
-	Sleep(time.Duration)
-	NewTicker(time.Duration) Ticker
-}
-
-// RealClock really calls time.Now()
-type RealClock struct{}
-
-// Now returns the current time.
-func (RealClock) Now() time.Time {
-	return time.Now()
-}
-
-// Since returns time since the specified timestamp.
-func (RealClock) Since(ts time.Time) time.Duration {
-	return time.Since(ts)
-}
-
-// After is the same as time.After(d).
-func (RealClock) After(d time.Duration) <-chan time.Time {
-	return time.After(d)
-}
-
-// AfterFunc is the same as time.AfterFunc(d, f).
-func (RealClock) AfterFunc(d time.Duration, f func()) Timer {
-	return &realTimer{
-		timer: time.AfterFunc(d, f),
-	}
-}
-
-// NewTimer returns a new Timer.
-func (RealClock) NewTimer(d time.Duration) Timer {
-	return &realTimer{
-		timer: time.NewTimer(d),
-	}
-}
-
-// NewTicker returns a new Ticker.
-func (RealClock) NewTicker(d time.Duration) Ticker {
-	return &realTicker{
-		ticker: time.NewTicker(d),
-	}
-}
-
-// Sleep pauses the RealClock for duration d.
-func (RealClock) Sleep(d time.Duration) {
-	time.Sleep(d)
-}
+var (
+	_ = clock.PassiveClock(&FakePassiveClock{})
+	_ = clock.WithTicker(&FakeClock{})
+	_ = clock.Clock(&IntervalClock{})
+)
 
 // FakePassiveClock implements PassiveClock, but returns an arbitrary time.
 type FakePassiveClock struct {
@@ -105,6 +48,7 @@ type fakeClockWaiter struct {
 	stepInterval  time.Duration
 	skipIfBlocked bool
 	destChan      chan time.Time
+	fired         bool
 	afterFunc     func()
 }
 
@@ -156,27 +100,8 @@ func (f *FakeClock) After(d time.Duration) <-chan time.Time {
 	return ch
 }
 
-// AfterFunc is the Fake version of time.AfterFunc(d, callback).
-func (f *FakeClock) AfterFunc(d time.Duration, cb func()) Timer {
-	f.lock.Lock()
-	defer f.lock.Unlock()
-	stopTime := f.time.Add(d)
-	ch := make(chan time.Time, 1) // Don't block!
-
-	timer := &fakeTimer{
-		fakeClock: f,
-		waiter: fakeClockWaiter{
-			targetTime: stopTime,
-			destChan:   ch,
-			afterFunc:  cb,
-		},
-	}
-	f.waiters = append(f.waiters, timer.waiter)
-	return timer
-}
-
-// NewTimer is the Fake version of time.NewTimer(d).
-func (f *FakeClock) NewTimer(d time.Duration) Timer {
+// NewTimer constructs a fake timer, akin to time.NewTimer(d).
+func (f *FakeClock) NewTimer(d time.Duration) clock.Timer {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 	stopTime := f.time.Add(d)
@@ -285,10 +210,6 @@ func (f *FakeClock) setTimeLocked(t time.Time) {
 				w.afterFunc()
 			}
 
-			if w.afterFunc != nil {
-				w.afterFunc()
-			}
-
 			if w.stepInterval > 0 {
 				for !w.targetTime.After(t) {
 					w.targetTime = w.targetTime.Add(w.stepInterval)
@@ -303,8 +224,8 @@ func (f *FakeClock) setTimeLocked(t time.Time) {
 	f.waiters = newWaiters
 }
 
-// HasWaiters returns true if After or AfterFunc has been called on f but not yet satisfied
-// (so you can write race-free tests).
+// HasWaiters returns true if After or AfterFunc has been called on f but not yet satisfied (so you can
+// write race-free tests).
 func (f *FakeClock) HasWaiters() bool {
 	f.lock.RLock()
 	defer f.lock.RUnlock()
@@ -341,13 +262,7 @@ func (*IntervalClock) After(d time.Duration) <-chan time.Time {
 	panic("IntervalClock doesn't implement After")
 }
 
-// AfterFunc is currently unimplemented, will panic.
-// TODO: make interval clock use FakeClock so this can be implemented.
-func (*IntervalClock) AfterFunc(d time.Duration, cb func()) Timer {
-	panic("IntervalClock doesn't implement AfterFunc")
-}
-
-// NewTimer is currently unimplemented, will panic.
+// NewTimer is unimplemented, will panic.
 // TODO: make interval clock use FakeClock so this can be implemented.
 func (*IntervalClock) NewTimer(d time.Duration) clock.Timer {
 	panic("IntervalClock doesn't implement NewTimer")
@@ -407,16 +322,8 @@ func (f *fakeTimer) Stop() bool {
 	return !f.waiter.fired
 }
 
-// Reset conditionally updates the firing time of the timer.  If the
-// timer has neither fired nor been stopped then this call resets the
-// timer to the fake clock's "now" + d and returns true, otherwise
-// it creates a new waiter, adds it to the clock, and returns true.
-//
-// It is not possible to return false, because a fake timer can be reset
-// from any state (waiting to fire, already fired, and stopped).
-//
-// See the GoDoc for time.Timer::Reset for more context on why
-// the return value of Reset() is not useful.
+// Reset resets the timer to the fake clock's "now" + d. It returns true if the timer has not yet
+// fired, or false otherwise.
 func (f *fakeTimer) Reset(d time.Duration) bool {
 	f.fakeClock.lock.Lock()
 	defer f.fakeClock.lock.Unlock()
@@ -434,16 +341,9 @@ func (f *fakeTimer) Reset(d time.Duration) bool {
 			break
 		}
 	}
-	// No existing waiter, timer has already fired or been reset.
-	// We should still enable Reset() to succeed by creating a
-	// new waiter and adding it to the clock's waiters.
-	newWaiter := fakeClockWaiter{
-		targetTime: f.fakeClock.time.Add(d),
-		destChan:   seekChan,
+	if !isWaiting {
+		f.fakeClock.waiters = append(f.fakeClock.waiters, &f.waiter)
 	}
-	f.fakeClock.waiters = append(f.fakeClock.waiters, newWaiter)
-	return true
-}
 
 	return active
 }

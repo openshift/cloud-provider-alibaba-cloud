@@ -72,7 +72,7 @@ func HTTPWrappersForConfig(config *Config, rt http.RoundTripper) (http.RoundTrip
 func DebugWrappers(rt http.RoundTripper) http.RoundTripper {
 	switch {
 	case bool(klog.V(9).Enabled()):
-		rt = NewDebuggingRoundTripper(rt, DebugCurlCommand, DebugURLTiming, DebugResponseHeaders)
+		rt = NewDebuggingRoundTripper(rt, DebugCurlCommand, DebugDetailedTiming, DebugResponseHeaders)
 	case bool(klog.V(8).Enabled()):
 		rt = NewDebuggingRoundTripper(rt, DebugJustURL, DebugRequestHeaders, DebugResponseStatus, DebugResponseHeaders)
 	case bool(klog.V(7).Enabled()):
@@ -151,6 +151,8 @@ type userAgentRoundTripper struct {
 	agent string
 	rt    http.RoundTripper
 }
+
+var _ utilnet.RoundTripperWrapper = &userAgentRoundTripper{}
 
 // NewUserAgentRoundTripper will add User-Agent header to a request unless it has already been set.
 func NewUserAgentRoundTripper(agent string, rt http.RoundTripper) http.RoundTripper {
@@ -381,6 +383,8 @@ type debuggingRoundTripper struct {
 	levels                map[DebugLevel]bool
 }
 
+var _ utilnet.RoundTripperWrapper = &debuggingRoundTripper{}
+
 // DebugLevel is used to enable debugging of certain
 // HTTP requests and responses fields via the debuggingRoundTripper.
 type DebugLevel int
@@ -399,6 +403,8 @@ const (
 	DebugResponseStatus
 	// DebugResponseHeaders will add to the debug output the HTTP response headers.
 	DebugResponseHeaders
+	// DebugDetailedTiming will add to the debug output the duration of the HTTP requests events.
+	DebugDetailedTiming
 )
 
 // NewDebuggingRoundTripper allows to display in the logs output debug information
@@ -546,6 +552,24 @@ func (rt *debuggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 	if rt.levels[DebugURLTiming] {
 		klog.Infof("%s %s %s in %d milliseconds", reqInfo.RequestVerb, reqInfo.RequestURL, reqInfo.ResponseStatus, reqInfo.Duration.Nanoseconds()/int64(time.Millisecond))
 	}
+	if rt.levels[DebugDetailedTiming] {
+		stats := ""
+		if !reqInfo.ConnectionReused {
+			stats += fmt.Sprintf(`DNSLookup %d ms Dial %d ms TLSHandshake %d ms`,
+				reqInfo.DNSLookup.Nanoseconds()/int64(time.Millisecond),
+				reqInfo.Dialing.Nanoseconds()/int64(time.Millisecond),
+				reqInfo.TLSHandshake.Nanoseconds()/int64(time.Millisecond),
+			)
+		} else {
+			stats += fmt.Sprintf(`GetConnection %d ms`, reqInfo.GetConnection.Nanoseconds()/int64(time.Millisecond))
+		}
+		if reqInfo.ServerProcessing != 0 {
+			stats += fmt.Sprintf(` ServerProcessing %d ms`, reqInfo.ServerProcessing.Nanoseconds()/int64(time.Millisecond))
+		}
+		stats += fmt.Sprintf(` Duration %d ms`, reqInfo.Duration.Nanoseconds()/int64(time.Millisecond))
+		klog.Infof("HTTP Statistics: %s", stats)
+	}
+
 	if rt.levels[DebugResponseStatus] {
 		klog.Infof("Response Status: %s in %d milliseconds", reqInfo.ResponseStatus, reqInfo.Duration.Nanoseconds()/int64(time.Millisecond))
 	}
