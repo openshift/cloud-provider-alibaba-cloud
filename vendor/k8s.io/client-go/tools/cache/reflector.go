@@ -39,6 +39,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/pager"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/clock"
 	"k8s.io/utils/trace"
 )
 
@@ -68,7 +69,7 @@ type Reflector struct {
 
 	// backoff manages backoff of ListWatch
 	backoffManager wait.BackoffManager
-	// initConnBackoffManager manages backoff the initial connection with the Watch calll of ListAndWatch.
+	// initConnBackoffManager manages backoff the initial connection with the Watch call of ListAndWatch.
 	initConnBackoffManager wait.BackoffManager
 
 	resyncPeriod time.Duration
@@ -320,6 +321,7 @@ func (r *Reflector) ListAndWatch(stopCh <-chan struct{}) error {
 		}
 		initTrace.Step("Objects listed", trace.Field{"error", err})
 		if err != nil {
+			klog.Warningf("%s: failed to list %v: %v", r.name, r.expectedTypeName, err)
 			return fmt.Errorf("failed to list %v: %v", r.expectedTypeName, err)
 		}
 
@@ -338,7 +340,6 @@ func (r *Reflector) ListAndWatch(stopCh <-chan struct{}) error {
 		}
 
 		r.setIsLastSyncResourceVersionUnavailable(false) // list was successful
-		initTrace.Step("Objects listed")
 		listMetaInterface, err := meta.ListAccessor(list)
 		if err != nil {
 			return fmt.Errorf("unable to understand list result %#v: %v", list, err)

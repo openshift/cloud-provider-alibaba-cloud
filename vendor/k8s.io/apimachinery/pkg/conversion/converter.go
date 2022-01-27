@@ -45,11 +45,6 @@ type Converter struct {
 
 	// Set of conversions that should be treated as a no-op
 	ignoredUntypedConversions map[typePair]struct{}
-
-	// nameFunc is called to retrieve the name of a type; this name is used for the
-	// purpose of deciding whether two types match or not (i.e., will we attempt to
-	// do a conversion). The default returns the go type name.
-	nameFunc func(t reflect.Type) string
 }
 
 // NewConverter creates a new Converter object.
@@ -59,7 +54,6 @@ func NewConverter(NameFunc) *Converter {
 		conversionFuncs:           NewConversionFuncs(),
 		generatedConversionFuncs:  NewConversionFuncs(),
 		ignoredUntypedConversions: make(map[typePair]struct{}),
-		nameFunc:                  nameFn,
 	}
 	c.RegisterUntypedConversionFunc(
 		(*[]byte)(nil), (*[]byte)(nil),

@@ -107,28 +107,6 @@ func NewScheme() *Scheme {
 	return s
 }
 
-// nameFunc returns the name of the type that we wish to use to determine when two types attempt
-// a conversion. Defaults to the go name of the type if the type is not registered.
-func (s *Scheme) nameFunc(t reflect.Type) string {
-	// find the preferred names for this type
-	gvks, ok := s.typeToGVK[t]
-	if !ok {
-		return t.Name()
-	}
-
-	for _, gvk := range gvks {
-		internalGV := gvk.GroupVersion()
-		internalGV.Version = APIVersionInternal // this is hacky and maybe should be passed in
-		internalGVK := internalGV.WithKind(gvk.Kind)
-
-		if internalType, exists := s.gvkToType[internalGVK]; exists {
-			return s.typeToGVK[internalType][0].Kind
-		}
-	}
-
-	return gvks[0].Kind
-}
-
 // Converter allows access to the converter for the scheme
 func (s *Scheme) Converter() *conversion.Converter {
 	return s.converter

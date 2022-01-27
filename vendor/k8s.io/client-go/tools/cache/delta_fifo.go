@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"k8s.io/klog/v2"
+	utiltrace "k8s.io/utils/trace"
 )
 
 // DeltaFIFOOptions is the configuration parameters for DeltaFIFO. All are
@@ -122,7 +123,7 @@ type DeltaFIFO struct {
 	knownObjects KeyListerGetter
 
 	// Used to indicate a queue is closed so a control loop can exit when a queue is empty.
-	// Currently, not used to gate any of CRED operations.
+	// Currently, not used to gate any of CRUD operations.
 	closed bool
 
 	// emitDeltaTypeReplaced is whether to emit the Replaced or Sync

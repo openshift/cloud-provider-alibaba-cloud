@@ -229,7 +229,7 @@ func validateClusterInfo(clusterName string, clusterInfo clientcmdapi.Cluster) [
 	}
 	if proxyURL := clusterInfo.ProxyURL; proxyURL != "" {
 		if _, err := parseProxyURL(proxyURL); err != nil {
-			validationErrors = append(validationErrors, fmt.Errorf("invalid 'proxy-url' %q for cluster %q: %v", proxyURL, clusterName, err))
+			validationErrors = append(validationErrors, fmt.Errorf("invalid 'proxy-url' %q for cluster %q: %w", proxyURL, clusterName, err))
 		}
 	}
 	// Make sure CA data and CA file aren't both specified

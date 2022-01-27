@@ -255,6 +255,14 @@ const (
 )
 
 const (
+	// flags for EnumProcessModulesEx
+	LIST_MODULES_32BIT   = 0x01
+	LIST_MODULES_64BIT   = 0x02
+	LIST_MODULES_ALL     = 0x03
+	LIST_MODULES_DEFAULT = 0x00
+)
+
+const (
 	// filters for ReadDirectoryChangesW and FindFirstChangeNotificationW
 	FILE_NOTIFY_CHANGE_FILE_NAME   = 0x001
 	FILE_NOTIFY_CHANGE_DIR_NAME    = 0x002
@@ -2358,6 +2366,12 @@ type LIST_ENTRY struct {
 	Blink *LIST_ENTRY
 }
 
+type RUNTIME_FUNCTION struct {
+	BeginAddress uint32
+	EndAddress   uint32
+	UnwindData   uint32
+}
+
 type LDR_DATA_TABLE_ENTRY struct {
 	reserved1          [2]uintptr
 	InMemoryOrderLinks LIST_ENTRY
@@ -2548,6 +2562,60 @@ const (
 	FILE_PIPE_SERVER_END = 0x00000001
 )
 
+const (
+	// FileInformationClass for NtSetInformationFile
+	FileBasicInformation                         = 4
+	FileRenameInformation                        = 10
+	FileDispositionInformation                   = 13
+	FilePositionInformation                      = 14
+	FileEndOfFileInformation                     = 20
+	FileValidDataLengthInformation               = 39
+	FileShortNameInformation                     = 40
+	FileIoPriorityHintInformation                = 43
+	FileReplaceCompletionInformation             = 61
+	FileDispositionInformationEx                 = 64
+	FileCaseSensitiveInformation                 = 71
+	FileLinkInformation                          = 72
+	FileCaseSensitiveInformationForceAccessCheck = 75
+	FileKnownFolderInformation                   = 76
+
+	// Flags for FILE_RENAME_INFORMATION
+	FILE_RENAME_REPLACE_IF_EXISTS                    = 0x00000001
+	FILE_RENAME_POSIX_SEMANTICS                      = 0x00000002
+	FILE_RENAME_SUPPRESS_PIN_STATE_INHERITANCE       = 0x00000004
+	FILE_RENAME_SUPPRESS_STORAGE_RESERVE_INHERITANCE = 0x00000008
+	FILE_RENAME_NO_INCREASE_AVAILABLE_SPACE          = 0x00000010
+	FILE_RENAME_NO_DECREASE_AVAILABLE_SPACE          = 0x00000020
+	FILE_RENAME_PRESERVE_AVAILABLE_SPACE             = 0x00000030
+	FILE_RENAME_IGNORE_READONLY_ATTRIBUTE            = 0x00000040
+	FILE_RENAME_FORCE_RESIZE_TARGET_SR               = 0x00000080
+	FILE_RENAME_FORCE_RESIZE_SOURCE_SR               = 0x00000100
+	FILE_RENAME_FORCE_RESIZE_SR                      = 0x00000180
+
+	// Flags for FILE_DISPOSITION_INFORMATION_EX
+	FILE_DISPOSITION_DO_NOT_DELETE             = 0x00000000
+	FILE_DISPOSITION_DELETE                    = 0x00000001
+	FILE_DISPOSITION_POSIX_SEMANTICS           = 0x00000002
+	FILE_DISPOSITION_FORCE_IMAGE_SECTION_CHECK = 0x00000004
+	FILE_DISPOSITION_ON_CLOSE                  = 0x00000008
+	FILE_DISPOSITION_IGNORE_READONLY_ATTRIBUTE = 0x00000010
+
+	// Flags for FILE_CASE_SENSITIVE_INFORMATION
+	FILE_CS_FLAG_CASE_SENSITIVE_DIR = 0x00000001
+
+	// Flags for FILE_LINK_INFORMATION
+	FILE_LINK_REPLACE_IF_EXISTS                    = 0x00000001
+	FILE_LINK_POSIX_SEMANTICS                      = 0x00000002
+	FILE_LINK_SUPPRESS_STORAGE_RESERVE_INHERITANCE = 0x00000008
+	FILE_LINK_NO_INCREASE_AVAILABLE_SPACE          = 0x00000010
+	FILE_LINK_NO_DECREASE_AVAILABLE_SPACE          = 0x00000020
+	FILE_LINK_PRESERVE_AVAILABLE_SPACE             = 0x00000030
+	FILE_LINK_IGNORE_READONLY_ATTRIBUTE            = 0x00000040
+	FILE_LINK_FORCE_RESIZE_TARGET_SR               = 0x00000080
+	FILE_LINK_FORCE_RESIZE_SOURCE_SR               = 0x00000100
+	FILE_LINK_FORCE_RESIZE_SR                      = 0x00000180
+)
+
 // ProcessInformationClasses for NtQueryInformationProcess and NtSetInformationProcess.
 const (
 	ProcessBasicInformation = iota
@@ -2664,6 +2732,203 @@ type PROCESS_BASIC_INFORMATION struct {
 	InheritedFromUniqueProcessId uintptr
 }
 
+// SystemInformationClasses for NtQuerySystemInformation and NtSetSystemInformation
+const (
+	SystemBasicInformation = iota
+	SystemProcessorInformation
+	SystemPerformanceInformation
+	SystemTimeOfDayInformation
+	SystemPathInformation
+	SystemProcessInformation
+	SystemCallCountInformation
+	SystemDeviceInformation
+	SystemProcessorPerformanceInformation
+	SystemFlagsInformation
+	SystemCallTimeInformation
+	SystemModuleInformation
+	SystemLocksInformation
+	SystemStackTraceInformation
+	SystemPagedPoolInformation
+	SystemNonPagedPoolInformation
+	SystemHandleInformation
+	SystemObjectInformation
+	SystemPageFileInformation
+	SystemVdmInstemulInformation
+	SystemVdmBopInformation
+	SystemFileCacheInformation
+	SystemPoolTagInformation
+	SystemInterruptInformation
+	SystemDpcBehaviorInformation
+	SystemFullMemoryInformation
+	SystemLoadGdiDriverInformation
+	SystemUnloadGdiDriverInformation
+	SystemTimeAdjustmentInformation
+	SystemSummaryMemoryInformation
+	SystemMirrorMemoryInformation
+	SystemPerformanceTraceInformation
+	systemObsolete0
+	SystemExceptionInformation
+	SystemCrashDumpStateInformation
+	SystemKernelDebuggerInformation
+	SystemContextSwitchInformation
+	SystemRegistryQuotaInformation
+	SystemExtendServiceTableInformation
+	SystemPrioritySeperation
+	SystemVerifierAddDriverInformation
+	SystemVerifierRemoveDriverInformation
+	SystemProcessorIdleInformation
+	SystemLegacyDriverInformation
+	SystemCurrentTimeZoneInformation
+	SystemLookasideInformation
+	SystemTimeSlipNotification
+	SystemSessionCreate
+	SystemSessionDetach
+	SystemSessionInformation
+	SystemRangeStartInformation
+	SystemVerifierInformation
+	SystemVerifierThunkExtend
+	SystemSessionProcessInformation
+	SystemLoadGdiDriverInSystemSpace
+	SystemNumaProcessorMap
+	SystemPrefetcherInformation
+	SystemExtendedProcessInformation
+	SystemRecommendedSharedDataAlignment
+	SystemComPlusPackage
+	SystemNumaAvailableMemory
+	SystemProcessorPowerInformation
+	SystemEmulationBasicInformation
+	SystemEmulationProcessorInformation
+	SystemExtendedHandleInformation
+	SystemLostDelayedWriteInformation
+	SystemBigPoolInformation
+	SystemSessionPoolTagInformation
+	SystemSessionMappedViewInformation
+	SystemHotpatchInformation
+	SystemObjectSecurityMode
+	SystemWatchdogTimerHandler
+	SystemWatchdogTimerInformation
+	SystemLogicalProcessorInformation
+	SystemWow64SharedInformationObsolete
+	SystemRegisterFirmwareTableInformationHandler
+	SystemFirmwareTableInformation
+	SystemModuleInformationEx
+	SystemVerifierTriageInformation
+	SystemSuperfetchInformation
+	SystemMemoryListInformation
+	SystemFileCacheInformationEx
+	SystemThreadPriorityClientIdInformation
+	SystemProcessorIdleCycleTimeInformation
+	SystemVerifierCancellationInformation
+	SystemProcessorPowerInformationEx
+	SystemRefTraceInformation
+	SystemSpecialPoolInformation
+	SystemProcessIdInformation
+	SystemErrorPortInformation
+	SystemBootEnvironmentInformation
+	SystemHypervisorInformation
+	SystemVerifierInformationEx
+	SystemTimeZoneInformation
+	SystemImageFileExecutionOptionsInformation
+	SystemCoverageInformation
+	SystemPrefetchPatchInformation
+	SystemVerifierFaultsInformation
+	SystemSystemPartitionInformation
+	SystemSystemDiskInformation
+	SystemProcessorPerformanceDistribution
+	SystemNumaProximityNodeInformation
+	SystemDynamicTimeZoneInformation
+	SystemCodeIntegrityInformation
+	SystemProcessorMicrocodeUpdateInformation
+	SystemProcessorBrandString
+	SystemVirtualAddressInformation
+	SystemLogicalProcessorAndGroupInformation
+	SystemProcessorCycleTimeInformation
+	SystemStoreInformation
+	SystemRegistryAppendString
+	SystemAitSamplingValue
+	SystemVhdBootInformation
+	SystemCpuQuotaInformation
+	SystemNativeBasicInformation
+	systemSpare1
+	SystemLowPriorityIoInformation
+	SystemTpmBootEntropyInformation
+	SystemVerifierCountersInformation
+	SystemPagedPoolInformationEx
+	SystemSystemPtesInformationEx
+	SystemNodeDistanceInformation
+	SystemAcpiAuditInformation
+	SystemBasicPerformanceInformation
+	SystemQueryPerformanceCounterInformation
+	SystemSessionBigPoolInformation
+	SystemBootGraphicsInformation
+	SystemScrubPhysicalMemoryInformation
+	SystemBadPageInformation
+	SystemProcessorProfileControlArea
+	SystemCombinePhysicalMemoryInformation
+	SystemEntropyInterruptTimingCallback
+	SystemConsoleInformation
+	SystemPlatformBinaryInformation
+	SystemThrottleNotificationInformation
+	SystemHypervisorProcessorCountInformation
+	SystemDeviceDataInformation
+	SystemDeviceDataEnumerationInformation
+	SystemMemoryTopologyInformation
+	SystemMemoryChannelInformation
+	SystemBootLogoInformation
+	SystemProcessorPerformanceInformationEx
+	systemSpare0
+	SystemSecureBootPolicyInformation
+	SystemPageFileInformationEx
+	SystemSecureBootInformation
+	SystemEntropyInterruptTimingRawInformation
+	SystemPortableWorkspaceEfiLauncherInformation
+	SystemFullProcessInformation
+	SystemKernelDebuggerInformationEx
+	SystemBootMetadataInformation
+	SystemSoftRebootInformation
+	SystemElamCertificateInformation
+	SystemOfflineDumpConfigInformation
+	SystemProcessorFeaturesInformation
+	SystemRegistryReconciliationInformation
+	SystemEdidInformation
+	SystemManufacturingInformation
+	SystemEnergyEstimationConfigInformation
+	SystemHypervisorDetailInformation
+	SystemProcessorCycleStatsInformation
+	SystemVmGenerationCountInformation
+	SystemTrustedPlatformModuleInformation
+	SystemKernelDebuggerFlags
+	SystemCodeIntegrityPolicyInformation
+	SystemIsolatedUserModeInformation
+	SystemHardwareSecurityTestInterfaceResultsInformation
+	SystemSingleModuleInformation
+	SystemAllowedCpuSetsInformation
+	SystemDmaProtectionInformation
+	SystemInterruptCpuSetsInformation
+	SystemSecureBootPolicyFullInformation
+	SystemCodeIntegrityPolicyFullInformation
+	SystemAffinitizedInterruptProcessorInformation
+	SystemRootSiloInformation
+)
+
+type RTL_PROCESS_MODULE_INFORMATION struct {
+	Section          Handle
+	MappedBase       uintptr
+	ImageBase        uintptr
+	ImageSize        uint32
+	Flags            uint32
+	LoadOrderIndex   uint16
+	InitOrderIndex   uint16
+	LoadCount        uint16
+	OffsetToFileName uint16
+	FullPathName     [256]byte
+}
+
+type RTL_PROCESS_MODULES struct {
+	NumberOfModules uint32
+	Modules         [1]RTL_PROCESS_MODULE_INFORMATION
+}
+
 // Constants for LocalAlloc flags.
 const (
 	LMEM_FIXED          = 0x0
@@ -2758,6 +3023,22 @@ var (
 	RT_MANIFEST     ResourceID = 24
 )
 
+type VS_FIXEDFILEINFO struct {
+	Signature        uint32
+	StrucVersion     uint32
+	FileVersionMS    uint32
+	FileVersionLS    uint32
+	ProductVersionMS uint32
+	ProductVersionLS uint32
+	FileFlagsMask    uint32
+	FileFlags        uint32
+	FileOS           uint32
+	FileType         uint32
+	FileSubtype      uint32
+	FileDateMS       uint32
+	FileDateLS       uint32
+}
+
 type COAUTHIDENTITY struct {
 	User           *uint16
 	UserLength     uint32
@@ -2831,3 +3112,9 @@ const (
 
 // Flag for QueryFullProcessImageName.
 const PROCESS_NAME_NATIVE = 1
+
+type ModuleInfo struct {
+	BaseOfDll   uintptr
+	SizeOfImage uint32
+	EntryPoint  uintptr
+}

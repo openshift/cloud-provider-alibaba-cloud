@@ -331,12 +331,20 @@ message JobStatus {
   // (3) Remove the pod UID from the arrays while increasing the corresponding
   //     counter.
   //
-  // This field is alpha-level. The job controller only makes use of this field
-  // when the feature gate PodTrackingWithFinalizers is enabled.
+  // This field is beta-level. The job controller only makes use of this field
+  // when the feature gate JobTrackingWithFinalizers is enabled (enabled
+  // by default).
   // Old jobs might not be tracked using this field, in which case the field
   // remains null.
   // +optional
   optional UncountedTerminatedPods uncountedTerminatedPods = 8;
+
+  // The number of pods which have a Ready condition.
+  //
+  // This field is alpha-level. The job controller populates the field when
+  // the feature gate JobReadyPods is enabled (disabled by default).
+  // +optional
+  optional int32 ready = 9;
 }
 
 // JobTemplateSpec describes the data a Job should have when created from a template
