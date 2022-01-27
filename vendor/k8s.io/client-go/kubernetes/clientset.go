@@ -51,6 +51,7 @@ import (
 	extensionsv1beta1 "k8s.io/client-go/kubernetes/typed/extensions/v1beta1"
 	flowcontrolv1alpha1 "k8s.io/client-go/kubernetes/typed/flowcontrol/v1alpha1"
 	flowcontrolv1beta1 "k8s.io/client-go/kubernetes/typed/flowcontrol/v1beta1"
+	flowcontrolv1beta2 "k8s.io/client-go/kubernetes/typed/flowcontrol/v1beta2"
 	networkingv1 "k8s.io/client-go/kubernetes/typed/networking/v1"
 	networkingv1beta1 "k8s.io/client-go/kubernetes/typed/networking/v1beta1"
 	nodev1 "k8s.io/client-go/kubernetes/typed/node/v1"
@@ -101,6 +102,7 @@ type Interface interface {
 	ExtensionsV1beta1() extensionsv1beta1.ExtensionsV1beta1Interface
 	FlowcontrolV1alpha1() flowcontrolv1alpha1.FlowcontrolV1alpha1Interface
 	FlowcontrolV1beta1() flowcontrolv1beta1.FlowcontrolV1beta1Interface
+	FlowcontrolV1beta2() flowcontrolv1beta2.FlowcontrolV1beta2Interface
 	NetworkingV1() networkingv1.NetworkingV1Interface
 	NetworkingV1beta1() networkingv1beta1.NetworkingV1beta1Interface
 	NodeV1() nodev1.NodeV1Interface
@@ -151,6 +153,7 @@ type Clientset struct {
 	extensionsV1beta1            *extensionsv1beta1.ExtensionsV1beta1Client
 	flowcontrolV1alpha1          *flowcontrolv1alpha1.FlowcontrolV1alpha1Client
 	flowcontrolV1beta1           *flowcontrolv1beta1.FlowcontrolV1beta1Client
+	flowcontrolV1beta2           *flowcontrolv1beta2.FlowcontrolV1beta2Client
 	networkingV1                 *networkingv1.NetworkingV1Client
 	networkingV1beta1            *networkingv1beta1.NetworkingV1beta1Client
 	nodeV1                       *nodev1.NodeV1Client
@@ -309,6 +312,11 @@ func (c *Clientset) FlowcontrolV1beta1() flowcontrolv1beta1.FlowcontrolV1beta1In
 	return c.flowcontrolV1beta1
 }
 
+// FlowcontrolV1beta2 retrieves the FlowcontrolV1beta2Client
+func (c *Clientset) FlowcontrolV1beta2() flowcontrolv1beta2.FlowcontrolV1beta2Interface {
+	return c.flowcontrolV1beta2
+}
+
 // NetworkingV1 retrieves the NetworkingV1Client
 func (c *Clientset) NetworkingV1() networkingv1.NetworkingV1Interface {
 	return c.networkingV1
@@ -437,11 +445,11 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
-	cs.internalV1alpha1, err = internalv1alpha1.NewForConfig(&configShallowCopy)
+	cs.internalV1alpha1, err = internalv1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
-	cs.appsV1, err = appsv1.NewForConfig(&configShallowCopy)
+	cs.appsV1, err = appsv1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -453,7 +461,7 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
-	cs.authenticationV1, err = authenticationv1.NewForConfig(&configShallowCopy)
+	cs.authenticationV1, err = authenticationv1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -489,7 +497,7 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
-	cs.certificatesV1, err = certificatesv1.NewForConfig(&configShallowCopy)
+	cs.batchV1beta1, err = batchv1beta1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -509,7 +517,7 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
-	cs.discoveryV1, err = discoveryv1.NewForConfig(&configShallowCopy)
+	cs.coreV1, err = corev1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -517,11 +525,11 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
-	cs.eventsV1, err = eventsv1.NewForConfig(&configShallowCopy)
+	cs.discoveryV1beta1, err = discoveryv1beta1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
-	cs.eventsV1beta1, err = eventsv1beta1.NewForConfig(&configShallowCopy)
+	cs.eventsV1, err = eventsv1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -533,11 +541,11 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
-	cs.flowcontrolV1beta1, err = flowcontrolv1beta1.NewForConfig(&configShallowCopy)
+	cs.flowcontrolV1alpha1, err = flowcontrolv1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
-	cs.networkingV1, err = networkingv1.NewForConfig(&configShallowCopy)
+	cs.flowcontrolV1beta1, err = flowcontrolv1beta1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -545,11 +553,11 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
-	cs.nodeV1, err = nodev1.NewForConfig(&configShallowCopy)
+	cs.networkingV1, err = networkingv1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
-	cs.nodeV1alpha1, err = nodev1alpha1.NewForConfig(&configShallowCopy)
+	cs.networkingV1beta1, err = networkingv1beta1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -557,11 +565,11 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
-	cs.policyV1, err = policyv1.NewForConfig(&configShallowCopy)
+	cs.nodeV1alpha1, err = nodev1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
-	cs.policyV1beta1, err = policyv1beta1.NewForConfig(&configShallowCopy)
+	cs.nodeV1beta1, err = nodev1beta1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -589,7 +597,7 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
-	cs.storageV1beta1, err = storagev1beta1.NewForConfig(&configShallowCopy)
+	cs.schedulingV1beta1, err = schedulingv1beta1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -620,53 +628,11 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 // NewForConfigOrDie creates a new Clientset for the given config and
 // panics if there is an error in the config.
 func NewForConfigOrDie(c *rest.Config) *Clientset {
-	var cs Clientset
-	cs.admissionregistrationV1 = admissionregistrationv1.NewForConfigOrDie(c)
-	cs.admissionregistrationV1beta1 = admissionregistrationv1beta1.NewForConfigOrDie(c)
-	cs.internalV1alpha1 = internalv1alpha1.NewForConfigOrDie(c)
-	cs.appsV1 = appsv1.NewForConfigOrDie(c)
-	cs.appsV1beta1 = appsv1beta1.NewForConfigOrDie(c)
-	cs.appsV1beta2 = appsv1beta2.NewForConfigOrDie(c)
-	cs.authenticationV1 = authenticationv1.NewForConfigOrDie(c)
-	cs.authenticationV1beta1 = authenticationv1beta1.NewForConfigOrDie(c)
-	cs.authorizationV1 = authorizationv1.NewForConfigOrDie(c)
-	cs.authorizationV1beta1 = authorizationv1beta1.NewForConfigOrDie(c)
-	cs.autoscalingV1 = autoscalingv1.NewForConfigOrDie(c)
-	cs.autoscalingV2beta1 = autoscalingv2beta1.NewForConfigOrDie(c)
-	cs.autoscalingV2beta2 = autoscalingv2beta2.NewForConfigOrDie(c)
-	cs.batchV1 = batchv1.NewForConfigOrDie(c)
-	cs.batchV1beta1 = batchv1beta1.NewForConfigOrDie(c)
-	cs.certificatesV1 = certificatesv1.NewForConfigOrDie(c)
-	cs.certificatesV1beta1 = certificatesv1beta1.NewForConfigOrDie(c)
-	cs.coordinationV1beta1 = coordinationv1beta1.NewForConfigOrDie(c)
-	cs.coordinationV1 = coordinationv1.NewForConfigOrDie(c)
-	cs.coreV1 = corev1.NewForConfigOrDie(c)
-	cs.discoveryV1 = discoveryv1.NewForConfigOrDie(c)
-	cs.discoveryV1beta1 = discoveryv1beta1.NewForConfigOrDie(c)
-	cs.eventsV1 = eventsv1.NewForConfigOrDie(c)
-	cs.eventsV1beta1 = eventsv1beta1.NewForConfigOrDie(c)
-	cs.extensionsV1beta1 = extensionsv1beta1.NewForConfigOrDie(c)
-	cs.flowcontrolV1alpha1 = flowcontrolv1alpha1.NewForConfigOrDie(c)
-	cs.flowcontrolV1beta1 = flowcontrolv1beta1.NewForConfigOrDie(c)
-	cs.networkingV1 = networkingv1.NewForConfigOrDie(c)
-	cs.networkingV1beta1 = networkingv1beta1.NewForConfigOrDie(c)
-	cs.nodeV1 = nodev1.NewForConfigOrDie(c)
-	cs.nodeV1alpha1 = nodev1alpha1.NewForConfigOrDie(c)
-	cs.nodeV1beta1 = nodev1beta1.NewForConfigOrDie(c)
-	cs.policyV1 = policyv1.NewForConfigOrDie(c)
-	cs.policyV1beta1 = policyv1beta1.NewForConfigOrDie(c)
-	cs.rbacV1 = rbacv1.NewForConfigOrDie(c)
-	cs.rbacV1beta1 = rbacv1beta1.NewForConfigOrDie(c)
-	cs.rbacV1alpha1 = rbacv1alpha1.NewForConfigOrDie(c)
-	cs.schedulingV1alpha1 = schedulingv1alpha1.NewForConfigOrDie(c)
-	cs.schedulingV1beta1 = schedulingv1beta1.NewForConfigOrDie(c)
-	cs.schedulingV1 = schedulingv1.NewForConfigOrDie(c)
-	cs.storageV1beta1 = storagev1beta1.NewForConfigOrDie(c)
-	cs.storageV1 = storagev1.NewForConfigOrDie(c)
-	cs.storageV1alpha1 = storagev1alpha1.NewForConfigOrDie(c)
-
-	cs.DiscoveryClient = discovery.NewDiscoveryClientForConfigOrDie(c)
-	return &cs
+	cs, err := NewForConfig(c)
+	if err != nil {
+		panic(err)
+	}
+	return cs
 }
 
 // New creates a new Clientset for the given RESTClient.
@@ -700,6 +666,7 @@ func New(c rest.Interface) *Clientset {
 	cs.extensionsV1beta1 = extensionsv1beta1.New(c)
 	cs.flowcontrolV1alpha1 = flowcontrolv1alpha1.New(c)
 	cs.flowcontrolV1beta1 = flowcontrolv1beta1.New(c)
+	cs.flowcontrolV1beta2 = flowcontrolv1beta2.New(c)
 	cs.networkingV1 = networkingv1.New(c)
 	cs.networkingV1beta1 = networkingv1beta1.New(c)
 	cs.nodeV1 = nodev1.New(c)

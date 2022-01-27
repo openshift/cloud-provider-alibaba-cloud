@@ -259,6 +259,12 @@ type StatefulSetSpec struct {
 	// This is an alpha field and requires enabling StatefulSetMinReadySeconds feature gate.
 	// +optional
 	MinReadySeconds int32 `json:"minReadySeconds,omitempty" protobuf:"varint,9,opt,name=minReadySeconds"`
+
+	// PersistentVolumeClaimRetentionPolicy describes the policy used for PVCs created from
+	// the StatefulSet VolumeClaimTemplates. This requires the
+	// StatefulSetAutoDeletePVC feature gate to be enabled, which is alpha.
+	// +optional
+	PersistentVolumeClaimRetentionPolicy *StatefulSetPersistentVolumeClaimRetentionPolicy `json:"persistentVolumeClaimRetentionPolicy,omitempty" protobuf:"bytes,10,opt,name=persistentVolumeClaimRetentionPolicy"`
 }
 
 // StatefulSetStatus represents the current state of a StatefulSet.
@@ -303,10 +309,8 @@ type StatefulSetStatus struct {
 	Conditions []StatefulSetCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,10,rep,name=conditions"`
 
 	// Total number of available pods (ready for at least minReadySeconds) targeted by this StatefulSet.
-	// This is an alpha field and requires enabling StatefulSetMinReadySeconds feature gate.
-	// Remove omitempty when graduating to beta
-	// +optional
-	AvailableReplicas int32 `json:"availableReplicas,omitempty" protobuf:"varint,11,opt,name=availableReplicas"`
+	// This is a beta field and enabled/disabled by StatefulSetMinReadySeconds feature gate.
+	AvailableReplicas int32 `json:"availableReplicas" protobuf:"varint,11,opt,name=availableReplicas"`
 }
 
 type StatefulSetConditionType string

@@ -71,6 +71,7 @@ type JobList struct {
 }
 
 // CompletionMode specifies how Pod completions of a Job are tracked.
+// +enum
 type CompletionMode string
 
 const (
@@ -258,12 +259,20 @@ type JobStatus struct {
 	// (3) Remove the pod UID from the arrays while increasing the corresponding
 	//     counter.
 	//
-	// This field is alpha-level. The job controller only makes use of this field
-	// when the feature gate PodTrackingWithFinalizers is enabled.
+	// This field is beta-level. The job controller only makes use of this field
+	// when the feature gate JobTrackingWithFinalizers is enabled (enabled
+	// by default).
 	// Old jobs might not be tracked using this field, in which case the field
 	// remains null.
 	// +optional
 	UncountedTerminatedPods *UncountedTerminatedPods `json:"uncountedTerminatedPods,omitempty" protobuf:"bytes,8,opt,name=uncountedTerminatedPods"`
+
+	// The number of pods which have a Ready condition.
+	//
+	// This field is alpha-level. The job controller populates the field when
+	// the feature gate JobReadyPods is enabled (disabled by default).
+	// +optional
+	Ready *int32 `json:"ready,omitempty" protobuf:"varint,9,opt,name=ready"`
 }
 
 // UncountedTerminatedPods holds UIDs of Pods that have terminated but haven't
@@ -405,6 +414,7 @@ type CronJobSpec struct {
 // Only one of the following concurrent policies may be specified.
 // If none of the following policies is specified, the default one
 // is AllowConcurrent.
+// +enum
 type ConcurrencyPolicy string
 
 const (
