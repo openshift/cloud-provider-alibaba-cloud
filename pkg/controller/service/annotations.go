@@ -47,6 +47,7 @@ const (
 	DeleteProtection       = AnnotationLoadBalancerPrefix + "delete-protection"        // DeleteProtection delete protection
 	ModificationProtection = AnnotationLoadBalancerPrefix + "modification-protection"  // ModificationProtection modification type
 	ExternalIPType         = AnnotationLoadBalancerPrefix + "external-ip-type"         // ExternalIPType external ip type
+	HostName               = AnnotationLoadBalancerPrefix + "hostname"                 // HostName hostname for service.status.ingress.hostname
 
 	// Listener Attribute
 	AclStatus                 = AnnotationLoadBalancerPrefix + "acl-status"                   // AclStatus enable or disable acl on all listener
@@ -67,6 +68,7 @@ const (
 	HealthCheckTimeout        = AnnotationLoadBalancerPrefix + "health-check-timeout"         // HealthCheckTimeout health check timeout
 	HealthCheckDomain         = AnnotationLoadBalancerPrefix + "health-check-domain"          // HealthCheckDomain health check domain
 	HealthCheckHTTPCode       = AnnotationLoadBalancerPrefix + "health-check-httpcode"        // HealthCheckHTTPCode health check http code
+	HealthCheckMethod         = AnnotationLoadBalancerPrefix + "health-check-method"          // HealthCheckMethod health check method for L7
 	SessionStick              = AnnotationLoadBalancerPrefix + "sticky-session"               // SessionStick sticky session
 	SessionStickType          = AnnotationLoadBalancerPrefix + "sticky-session-type"          // SessionStickType session sticky type
 	CookieTimeout             = AnnotationLoadBalancerPrefix + "cookie-timeout"               // CookieTimeout cookie timeout
@@ -77,6 +79,8 @@ const (
 	VGroupPort                = AnnotationLoadBalancerPrefix + "vgroup-port"                  // VGroupIDs binding user managed vGroup ids to ports
 	XForwardedForProto        = AnnotationLoadBalancerPrefix + "xforwardedfor-proto"          // XForwardedForProto whether to use the X-Forwarded-Proto header to retrieve the listener protocol
 	IdleTimeout               = AnnotationLoadBalancerPrefix + "idle-timeout"                 // IdleTimeout idle timeout for L7
+	RequestTimeout            = AnnotationLoadBalancerPrefix + "request-timeout"              // RequestTimeout request timeout for L7
+	EstablishedTimeout        = AnnotationLoadBalancerPrefix + "established-timeout"          // EstablishedTimeout connection established time out for TCP
 
 	// VServerBackend Attribute
 	BackendLabel      = AnnotationLoadBalancerPrefix + "backend-label"              // BackendLabel backend labels
@@ -94,7 +98,7 @@ var DefaultValue = map[string]string{
 	composite(AnnotationPrefix, ModificationProtection): string(model.ConsoleProtection),
 }
 
-type AnnotationRequest struct{ svc *v1.Service }
+type AnnotationRequest struct{ Service *v1.Service }
 
 func NewAnnotationRequest(svc *v1.Service) *AnnotationRequest {
 	return &AnnotationRequest{svc}
@@ -102,22 +106,22 @@ func NewAnnotationRequest(svc *v1.Service) *AnnotationRequest {
 
 // TODO get all annotations value from Get()
 func (n *AnnotationRequest) Get(k string) string {
-	if n.svc == nil {
+	if n.Service == nil {
 		return ""
 	}
 
-	if n.svc.Annotations == nil {
+	if n.Service.Annotations == nil {
 		return ""
 	}
 
 	key := composite(AnnotationPrefix, k)
-	v, ok := n.svc.Annotations[key]
+	v, ok := n.Service.Annotations[key]
 	if ok {
 		return v
 	}
 
 	lkey := composite(AnnotationLegacyPrefix, k)
-	v, ok = n.svc.Annotations[lkey]
+	v, ok = n.Service.Annotations[lkey]
 	if ok {
 		return v
 	}
@@ -147,7 +151,7 @@ func (n *AnnotationRequest) GetDefaultTags() []model.Tag {
 
 func (n *AnnotationRequest) GetDefaultLoadBalancerName() string {
 	//GCE requires that the name of a load balancer starts with a lower case letter.
-	ret := "a" + string(n.svc.UID)
+	ret := "a" + string(n.Service.UID)
 	ret = strings.Replace(ret, "-", "", -1)
 	//AWS requires that the name of a load balancer is shorter than 32 bytes.
 	if len(ret) > 32 {
@@ -200,5 +204,5 @@ func (n *AnnotationRequest) GetLoadBalancerAdditionalTags() []model.Tag {
 }
 
 func (n *AnnotationRequest) isForceOverride() bool {
-	return n.Get(OverrideListener) == "" || n.Get(OverrideListener) == "false"
+	return n.Get(OverrideListener) == "true"
 }

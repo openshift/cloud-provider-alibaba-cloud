@@ -40,10 +40,16 @@ func (m *ModelApplier) Apply(reqCtx *RequestContext, local *model.LoadBalancer) 
 		if err := m.applyLoadBalancerAttribute(reqCtx, local, remote); err != nil {
 			return remote, fmt.Errorf("update lb attribute error: %s", err.Error())
 		}
-		// if remote slb is not exist, return
-		if remote.LoadBalancerAttribute.LoadBalancerId == "" {
+	}
+
+	if remote.LoadBalancerAttribute.LoadBalancerId == "" {
+		// delete loadbalancer: return nil
+		if needDeleteLoadBalancer(reqCtx.Service) {
 			return remote, nil
 		}
+		// update loadbalancer: return error
+		return remote, fmt.Errorf("alicloud: can not find loadbalancer by tag [%s:%s]",
+			TAGKEY, reqCtx.Anno.GetDefaultLoadBalancerName())
 	}
 	reqCtx.Ctx = context.WithValue(reqCtx.Ctx, dryrun.ContextSLB, remote.LoadBalancerAttribute.LoadBalancerId)
 
@@ -90,9 +96,9 @@ func (m *ModelApplier) applyLoadBalancerAttribute(reqCtx *RequestContext, local 
 				return fmt.Errorf("delete loadbalancer [%s] error: %s",
 					remote.LoadBalancerAttribute.LoadBalancerId, err.Error())
 			}
+			reqCtx.Log.Info(fmt.Sprintf("successfully delete slb %s", remote.LoadBalancerAttribute.LoadBalancerId))
 			remote.LoadBalancerAttribute.LoadBalancerId = ""
 			remote.LoadBalancerAttribute.Address = ""
-			reqCtx.Log.Info(fmt.Sprintf("successfully delete slb %s", remote.LoadBalancerAttribute.LoadBalancerId))
 			return nil
 		}
 		reqCtx.Log.Info(fmt.Sprintf("slb %s is reused, skip delete it", remote.LoadBalancerAttribute.LoadBalancerId))
@@ -149,7 +155,8 @@ func (m *ModelApplier) applyVGroups(reqCtx *RequestContext, local *model.LoadBal
 				break
 			}
 			// find by vgroup name
-			if local.VServerGroups[i].VGroupName == rv.VGroupName {
+			if local.VServerGroups[i].VGroupId == "" &&
+				local.VServerGroups[i].VGroupName == rv.VGroupName {
 				found = true
 				local.VServerGroups[i].VGroupId = rv.VGroupId
 				old = rv
@@ -188,7 +195,7 @@ func (m *ModelApplier) applyVGroups(reqCtx *RequestContext, local *model.LoadBal
 
 func (m *ModelApplier) applyListeners(reqCtx *RequestContext, local *model.LoadBalancer, remote *model.LoadBalancer) error {
 	if local.LoadBalancerAttribute.IsUserManaged {
-		if reqCtx.Anno.isForceOverride() {
+		if !reqCtx.Anno.isForceOverride() {
 			reqCtx.Log.Info("listener override is false, skip reconcile listeners")
 			return nil
 		}
@@ -259,7 +266,7 @@ func (m *ModelApplier) cleanup(reqCtx *RequestContext, local *model.LoadBalancer
 					vg.VGroupName, vg.VGroupId))
 				var del []model.BackendAttribute
 				for _, remote := range vg.Backends {
-					if isBackendManagedByMyService(reqCtx, remote, "") {
+					if !remote.IsUserManaged {
 						del = append(del, remote)
 					}
 				}

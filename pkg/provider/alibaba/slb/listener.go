@@ -252,6 +252,10 @@ func setTCPListenerValue(req interface{}, listener *model.ListenerAttribute) {
 		persistenceTimeout := v.FieldByName("PersistenceTimeout")
 		persistenceTimeout.SetString(strconv.Itoa(*listener.PersistenceTimeout))
 	}
+	if listener.EstablishedTimeout != 0 {
+		establishedTimeout := v.FieldByName("EstablishedTimeout")
+		establishedTimeout.SetString(strconv.Itoa(listener.EstablishedTimeout))
+	}
 	if listener.HealthCheckConnectTimeout != 0 {
 		healthCheckConnectTimeout := v.FieldByName("HealthCheckConnectTimeout")
 		healthCheckConnectTimeout.SetString(strconv.Itoa(listener.HealthCheckConnectTimeout))
@@ -324,6 +328,10 @@ func setHTTPListenerValue(req interface{}, listener *model.ListenerAttribute) {
 		healthCheckTimeout := v.FieldByName("HealthCheckTimeout")
 		healthCheckTimeout.SetString(strconv.Itoa(listener.HealthCheckTimeout))
 	}
+	if listener.HealthCheckMethod != "" {
+		healthCheckMethod := v.FieldByName("HealthCheckMethod")
+		healthCheckMethod.SetString(listener.HealthCheckMethod)
+	}
 	if listener.Cookie != "" {
 		cookie := v.FieldByName("Cookie")
 		cookie.SetString(listener.Cookie)
@@ -347,6 +355,10 @@ func setHTTPListenerValue(req interface{}, listener *model.ListenerAttribute) {
 	if listener.IdleTimeout != 0 {
 		idleTimeout := v.FieldByName("IdleTimeout")
 		idleTimeout.SetString(strconv.Itoa(listener.IdleTimeout))
+	}
+	if listener.RequestTimeout != 0 {
+		requestTimeout := v.FieldByName("RequestTimeout")
+		requestTimeout.SetString(strconv.Itoa(listener.RequestTimeout))
 	}
 }
 
@@ -372,6 +384,10 @@ func setHTTPSListenerValue(req interface{}, listener *model.ListenerAttribute) {
 	if listener.HealthCheckTimeout != 0 {
 		healthCheckTimeout := v.FieldByName("HealthCheckTimeout")
 		healthCheckTimeout.SetString(strconv.Itoa(listener.HealthCheckTimeout))
+	}
+	if listener.HealthCheckMethod != "" {
+		healthCheckMethod := v.FieldByName("HealthCheckMethod")
+		healthCheckMethod.SetString(listener.HealthCheckMethod)
 	}
 	if listener.Cookie != "" {
 		cookie := v.FieldByName("Cookie")
@@ -405,11 +421,16 @@ func setHTTPSListenerValue(req interface{}, listener *model.ListenerAttribute) {
 		enabled := v.FieldByName("EnableHttp2")
 		enabled.SetString(string(listener.EnableHttp2))
 	}
+	if listener.RequestTimeout != 0 {
+		requestTimeout := v.FieldByName("RequestTimeout")
+		requestTimeout.SetString(strconv.Itoa(listener.RequestTimeout))
+	}
 }
 
 func loadTCPListener(config slb.TCPListenerConfig, listener *model.ListenerAttribute) {
 	persistenceTimeout := config.PersistenceTimeout
 	listener.PersistenceTimeout = &persistenceTimeout
+	listener.EstablishedTimeout = config.EstablishedTimeout
 	listener.ConnectionDrain = model.FlagType(config.ConnectionDrain)
 	listener.ConnectionDrainTimeout = config.ConnectionDrainTimeout
 	listener.HealthyThreshold = config.HealthyThreshold
@@ -438,6 +459,7 @@ func loadHTTPListener(config slb.HTTPListenerConfig, listener *model.ListenerAtt
 	listener.StickySessionType = config.StickySessionType
 	listener.CookieTimeout = config.CookieTimeout
 	listener.Cookie = config.Cookie
+	listener.RequestTimeout = config.RequestTimeout
 	listener.XForwardedForProto = model.FlagType(config.XForwardedForProto)
 	listener.IdleTimeout = config.IdleTimeout
 	listener.HealthCheck = model.FlagType(config.HealthCheck)
@@ -449,6 +471,7 @@ func loadHTTPListener(config slb.HTTPListenerConfig, listener *model.ListenerAtt
 	listener.HealthCheckInterval = config.HealthCheckInterval
 	listener.HealthCheckConnectPort = config.HealthCheckConnectPort
 	listener.HealthCheckHttpCode = config.HealthCheckHttpCode
+	listener.HealthCheckMethod = config.HealthCheckMethod
 	listener.ListenerForward = model.FlagType(config.ListenerForward)
 	listener.ForwardPort = config.ForwardPort
 }
@@ -458,6 +481,7 @@ func loadHTTPSListener(config slb.HTTPSListenerConfig, listener *model.ListenerA
 	listener.StickySessionType = config.StickySessionType
 	listener.CookieTimeout = config.CookieTimeout
 	listener.Cookie = config.Cookie
+	listener.RequestTimeout = config.RequestTimeout
 	listener.XForwardedForProto = model.FlagType(config.XForwardedForProto)
 	listener.IdleTimeout = config.IdleTimeout
 	listener.HealthCheck = model.FlagType(config.HealthCheck)
@@ -469,6 +493,7 @@ func loadHTTPSListener(config slb.HTTPSListenerConfig, listener *model.ListenerA
 	listener.HealthCheckInterval = config.HealthCheckInterval
 	listener.HealthCheckConnectPort = config.HealthCheckConnectPort
 	listener.HealthCheckHttpCode = config.HealthCheckHttpCode
+	listener.HealthCheckMethod = config.HealthCheckMethod
 	listener.CertId = config.ServerCertificateId
 	listener.EnableHttp2 = model.FlagType(config.EnableHttp2)
 }

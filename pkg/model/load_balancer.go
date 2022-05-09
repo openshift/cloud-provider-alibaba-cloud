@@ -68,6 +68,13 @@ type LoadBalancer struct {
 	VServerGroups         []VServerGroup
 }
 
+func (l *LoadBalancer) GetLoadBalancerId() string {
+	if l == nil {
+		return "not found"
+	}
+	return l.LoadBalancerAttribute.LoadBalancerId
+}
+
 type LoadBalancerAttribute struct {
 	IsUserManaged bool
 
@@ -131,6 +138,8 @@ type ListenerAttribute struct {
 	ConnectionDrain           FlagType
 	ConnectionDrainTimeout    int // values: 10~900
 	IdleTimeout               int // values: 1~60
+	RequestTimeout            int // values: 1~180, http & https
+	EstablishedTimeout        int // values: 10~900, tcp
 	HealthCheckConnectPort    int
 	HealthCheckInterval       int      // values: 1~50
 	HealthyThreshold          int      // values: 2~10
@@ -142,6 +151,7 @@ type ListenerAttribute struct {
 	HealthCheckDomain         string   // tcp & http & https
 	HealthCheckURI            string   // tcp & http & https
 	HealthCheckHttpCode       string   // tcp & http & https
+	HealthCheckMethod         string   // http & https
 
 	// The following parameters can be set to the default value.
 	// Use the pointer type to distinguish. If the user does not set the param, the param is nil
@@ -176,6 +186,14 @@ type BackendAttribute struct {
 	ServerIp    string `json:"serverIp"`
 	Weight      int    `json:"weight"`
 	Port        int    `json:"port"`
+	Type        string `json:"type"`
+}
+
+// DryRunBackendAttribute only used in DryRun mode, for updating backend description in dry run mode
+type DryRunBackendAttribute struct {
+	Description string `json:"description"`
+	ServerId    string `json:"serverId"`
+	ServerIp    string `json:"serverIp"`
 	Type        string `json:"type"`
 }
 

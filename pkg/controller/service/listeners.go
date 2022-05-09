@@ -152,6 +152,15 @@ func (mgr *ListenerManager) buildListenerFromServicePort(reqCtx *RequestContext,
 		listener.PersistenceTimeout = &timeout
 	}
 
+	if reqCtx.Anno.Get(EstablishedTimeout) != "" {
+		establishedTimeout, err := strconv.Atoi(reqCtx.Anno.Get(EstablishedTimeout))
+		if err != nil {
+			return listener, fmt.Errorf("Annotation EstablishedTimeout must be integer, but got [%s]. message=[%s] ",
+				reqCtx.Anno.Get(EstablishedTimeout), err.Error())
+		}
+		listener.EstablishedTimeout = establishedTimeout
+	}
+
 	if reqCtx.Anno.Get(CertID) != "" {
 		listener.CertId = reqCtx.Anno.Get(CertID)
 	}
@@ -176,6 +185,15 @@ func (mgr *ListenerManager) buildListenerFromServicePort(reqCtx *RequestContext,
 				reqCtx.Anno.Get(IdleTimeout), err.Error())
 		}
 		listener.IdleTimeout = idleTimeout
+	}
+
+	if reqCtx.Anno.Get(RequestTimeout) != "" {
+		requestTimeout, err := strconv.Atoi(reqCtx.Anno.Get(RequestTimeout))
+		if err != nil {
+			return listener, fmt.Errorf("Annotation RequestTimeout must be integer, but got [%s]. message=[%s] ",
+				reqCtx.Anno.Get(RequestTimeout), err.Error())
+		}
+		listener.RequestTimeout = requestTimeout
 	}
 
 	// acl
@@ -289,6 +307,9 @@ func (mgr *ListenerManager) buildListenerFromServicePort(reqCtx *RequestContext,
 				reqCtx.Anno.Get(HealthCheckTimeout), err.Error())
 		}
 		listener.HealthCheckTimeout = timeout
+	}
+	if reqCtx.Anno.Get(HealthCheckMethod) != "" {
+		listener.HealthCheckMethod = reqCtx.Anno.Get(HealthCheckMethod)
 	}
 
 	return listener, nil
@@ -656,20 +677,20 @@ func isNeedUpdate(reqCtx *RequestContext, local model.ListenerAttribute, remote 
 	if remote.Description != local.Description {
 		needUpdate = true
 		update.Description = local.Description
-		updateDetail += fmt.Sprintf("Description changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("Description %v should be changed to %v;",
 			remote.Description, local.Description)
 	}
 	if remote.VGroupId != local.VGroupId {
 		needUpdate = true
 		update.VGroupId = local.VGroupId
-		updateDetail += fmt.Sprintf("VGroupId changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("VGroupId %v should be changed to %v;",
 			remote.VGroupId, local.VGroupId)
 	}
 	if local.Scheduler != "" &&
 		remote.Scheduler != local.Scheduler {
 		needUpdate = true
 		update.Scheduler = local.Scheduler
-		updateDetail += fmt.Sprintf("Scheduler changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("lb Scheduler %v should be changed to %v;",
 			remote.Scheduler, local.Scheduler)
 	}
 	if local.Protocol == model.TCP &&
@@ -677,15 +698,23 @@ func isNeedUpdate(reqCtx *RequestContext, local model.ListenerAttribute, remote 
 		*remote.PersistenceTimeout != *local.PersistenceTimeout {
 		needUpdate = true
 		update.PersistenceTimeout = local.PersistenceTimeout
-		updateDetail += fmt.Sprintf("PersistenceTimeout changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("lb PersistenceTimeout %v should be changed to %v;",
 			*remote.PersistenceTimeout, *local.PersistenceTimeout)
+	}
+	if local.Protocol == model.TCP &&
+		local.EstablishedTimeout != 0 &&
+		remote.EstablishedTimeout != local.EstablishedTimeout {
+		needUpdate = true
+		update.EstablishedTimeout = local.EstablishedTimeout
+		updateDetail += fmt.Sprintf("EstablishedTimeout changed: %v - %v ;",
+			remote.EstablishedTimeout, local.EstablishedTimeout)
 	}
 	// The cert id is necessary for https, so skip to check whether it is blank
 	if local.Protocol == model.HTTPS &&
 		remote.CertId != local.CertId {
 		needUpdate = true
 		update.CertId = local.CertId
-		updateDetail += fmt.Sprintf("CertId changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("lb CertId %v should be changed to %v;",
 			remote.CertId, local.CertId)
 	}
 	if local.Protocol == model.HTTPS &&
@@ -693,7 +722,7 @@ func isNeedUpdate(reqCtx *RequestContext, local model.ListenerAttribute, remote 
 		remote.EnableHttp2 != local.EnableHttp2 {
 		needUpdate = true
 		update.EnableHttp2 = local.EnableHttp2
-		updateDetail += fmt.Sprintf("EnableHttp2 changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("lb EnableHttp2 %v should be changed to %v;",
 			remote.EnableHttp2, local.EnableHttp2)
 	}
 	// acl
@@ -701,7 +730,7 @@ func isNeedUpdate(reqCtx *RequestContext, local model.ListenerAttribute, remote 
 		remote.AclStatus != local.AclStatus {
 		needUpdate = true
 		update.AclStatus = local.AclStatus
-		updateDetail += fmt.Sprintf("AclStatus changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("lb AclStatus %v should be changed to %v;",
 			remote.AclStatus, local.AclStatus)
 	}
 	if local.AclStatus == model.OnFlag &&
@@ -709,7 +738,7 @@ func isNeedUpdate(reqCtx *RequestContext, local model.ListenerAttribute, remote 
 		remote.AclId != local.AclId {
 		needUpdate = true
 		update.AclId = local.AclId
-		updateDetail += fmt.Sprintf("AclId changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("lb AclId %v should be changed to %v;",
 			remote.AclId, local.AclId)
 	}
 	if local.AclStatus == model.OnFlag &&
@@ -717,7 +746,7 @@ func isNeedUpdate(reqCtx *RequestContext, local model.ListenerAttribute, remote 
 		remote.AclType != local.AclType {
 		needUpdate = true
 		update.AclType = local.AclType
-		updateDetail += fmt.Sprintf("AclType changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("lb AclType %v should be changed to %v;",
 			remote.AclType, local.AclType)
 	}
 	// idle timeout
@@ -726,8 +755,17 @@ func isNeedUpdate(reqCtx *RequestContext, local model.ListenerAttribute, remote 
 		remote.IdleTimeout != local.IdleTimeout {
 		needUpdate = true
 		update.IdleTimeout = local.IdleTimeout
-		updateDetail += fmt.Sprintf("IdleTimeout changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("lb IdleTimeout %v should be changed to %v;",
 			remote.IdleTimeout, local.IdleTimeout)
+	}
+	// request timeout
+	if Is7LayerProtocol(local.Protocol) &&
+		local.RequestTimeout != 0 &&
+		remote.RequestTimeout != local.RequestTimeout {
+		needUpdate = true
+		update.RequestTimeout = local.RequestTimeout
+		updateDetail += fmt.Sprintf("RequestTimeout changed: %v - %v ;",
+			remote.RequestTimeout, local.RequestTimeout)
 	}
 	// session
 	if Is7LayerProtocol(local.Protocol) &&
@@ -735,7 +773,7 @@ func isNeedUpdate(reqCtx *RequestContext, local model.ListenerAttribute, remote 
 		remote.StickySession != local.StickySession {
 		needUpdate = true
 		update.StickySession = local.StickySession
-		updateDetail += fmt.Sprintf("StickySession changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("lb StickySession %v should be changed to %v;",
 			remote.StickySession, local.StickySession)
 	}
 	if Is7LayerProtocol(local.Protocol) &&
@@ -743,7 +781,7 @@ func isNeedUpdate(reqCtx *RequestContext, local model.ListenerAttribute, remote 
 		remote.StickySessionType != local.StickySessionType {
 		needUpdate = true
 		update.StickySessionType = local.StickySessionType
-		updateDetail += fmt.Sprintf("StickySessionType changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("lb StickySessionType %v should be changed to %v;",
 			remote.StickySessionType, local.StickySessionType)
 	}
 	if Is7LayerProtocol(local.Protocol) &&
@@ -751,7 +789,7 @@ func isNeedUpdate(reqCtx *RequestContext, local model.ListenerAttribute, remote 
 		remote.Cookie != local.Cookie {
 		needUpdate = true
 		update.Cookie = local.Cookie
-		updateDetail += fmt.Sprintf("Cookie changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("lb Cookie %v should be changed to %v;",
 			remote.Cookie, local.Cookie)
 	}
 	if Is7LayerProtocol(local.Protocol) &&
@@ -759,7 +797,7 @@ func isNeedUpdate(reqCtx *RequestContext, local model.ListenerAttribute, remote 
 		remote.CookieTimeout != local.CookieTimeout {
 		needUpdate = true
 		update.CookieTimeout = local.CookieTimeout
-		updateDetail += fmt.Sprintf("CookieTimeout changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("lb CookieTimeout %v should be changed to %v;",
 			remote.CookieTimeout, local.CookieTimeout)
 	}
 	// connection drain
@@ -768,7 +806,7 @@ func isNeedUpdate(reqCtx *RequestContext, local model.ListenerAttribute, remote 
 		remote.ConnectionDrain != local.ConnectionDrain {
 		needUpdate = true
 		update.ConnectionDrain = local.ConnectionDrain
-		updateDetail += fmt.Sprintf("ConnectionDrain changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("lb ConnectionDrain %v should be changed to %v;",
 			remote.ConnectionDrain, local.ConnectionDrain)
 	}
 	if Is4LayerProtocol(local.Protocol) &&
@@ -777,7 +815,7 @@ func isNeedUpdate(reqCtx *RequestContext, local model.ListenerAttribute, remote 
 		remote.ConnectionDrainTimeout != local.ConnectionDrainTimeout {
 		needUpdate = true
 		update.ConnectionDrainTimeout = local.ConnectionDrainTimeout
-		updateDetail += fmt.Sprintf("ConnectionDrainTimeout changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("lb ConnectionDrainTimeout %v should be changed to %v;",
 			remote.ConnectionDrainTimeout, local.ConnectionDrainTimeout)
 	}
 
@@ -787,7 +825,7 @@ func isNeedUpdate(reqCtx *RequestContext, local model.ListenerAttribute, remote 
 		remote.XForwardedForProto != local.XForwardedForProto {
 		needUpdate = true
 		update.XForwardedForProto = local.XForwardedForProto
-		updateDetail += fmt.Sprintf("XForwardedForProto changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("lb XForwardedForProto %v should be changed to %v;",
 			remote.XForwardedForProto, local.XForwardedForProto)
 	}
 
@@ -796,28 +834,28 @@ func isNeedUpdate(reqCtx *RequestContext, local model.ListenerAttribute, remote 
 		remote.HealthCheckConnectPort != local.HealthCheckConnectPort {
 		needUpdate = true
 		update.HealthCheckConnectPort = local.HealthCheckConnectPort
-		updateDetail += fmt.Sprintf("HealthCheckConnectPort changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("lb HealthCheckConnectPort %v should be changed to %v;",
 			remote.HealthCheckConnectPort, local.HealthCheckConnectPort)
 	}
 	if local.HealthCheckInterval != 0 &&
 		remote.HealthCheckInterval != local.HealthCheckInterval {
 		needUpdate = true
 		update.HealthCheckInterval = local.HealthCheckInterval
-		updateDetail += fmt.Sprintf("HealthCheckInterval changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("lb HealthCheckInterval %v should be changed to %v;",
 			remote.HealthCheckInterval, local.HealthCheckInterval)
 	}
 	if local.HealthyThreshold != 0 &&
 		remote.HealthyThreshold != local.HealthyThreshold {
 		needUpdate = true
 		update.HealthyThreshold = local.HealthyThreshold
-		updateDetail += fmt.Sprintf("HealthyThreshold changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("lb HealthyThreshold %v should be changed to %v;",
 			remote.HealthyThreshold, local.HealthyThreshold)
 	}
 	if local.UnhealthyThreshold != 0 &&
 		remote.UnhealthyThreshold != local.UnhealthyThreshold {
 		needUpdate = true
 		update.UnhealthyThreshold = local.UnhealthyThreshold
-		updateDetail += fmt.Sprintf("UnhealthyThreshold changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("lb UnhealthyThreshold %v should be changed to %v;",
 			remote.UnhealthyThreshold, local.UnhealthyThreshold)
 	}
 	if local.Protocol == model.TCP &&
@@ -825,7 +863,7 @@ func isNeedUpdate(reqCtx *RequestContext, local model.ListenerAttribute, remote 
 		remote.HealthCheckType != local.HealthCheckType {
 		needUpdate = true
 		update.HealthCheckType = local.HealthCheckType
-		updateDetail += fmt.Sprintf("HealthCheckType changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("lb HealthCheckType %v should be changed to %v;",
 			remote.HealthCheckType, local.HealthCheckType)
 	}
 	if local.Protocol != model.UDP &&
@@ -833,7 +871,7 @@ func isNeedUpdate(reqCtx *RequestContext, local model.ListenerAttribute, remote 
 		remote.HealthCheckDomain != local.HealthCheckDomain {
 		needUpdate = true
 		update.HealthCheckDomain = local.HealthCheckDomain
-		updateDetail += fmt.Sprintf("HealthCheckDomain changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("lb HealthCheckDomain %v should be changed to %v;",
 			remote.HealthCheckDomain, local.HealthCheckDomain)
 	}
 	if local.Protocol != model.UDP &&
@@ -841,7 +879,7 @@ func isNeedUpdate(reqCtx *RequestContext, local model.ListenerAttribute, remote 
 		remote.HealthCheckURI != local.HealthCheckURI {
 		needUpdate = true
 		update.HealthCheckURI = local.HealthCheckURI
-		updateDetail += fmt.Sprintf("HealthCheckURI changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("lb HealthCheckURI %v should be changed to %v;",
 			remote.HealthCheckURI, local.HealthCheckURI)
 	}
 	if local.Protocol != model.UDP &&
@@ -849,7 +887,7 @@ func isNeedUpdate(reqCtx *RequestContext, local model.ListenerAttribute, remote 
 		remote.HealthCheckHttpCode != local.HealthCheckHttpCode {
 		needUpdate = true
 		update.HealthCheckHttpCode = local.HealthCheckHttpCode
-		updateDetail += fmt.Sprintf("HealthCheckHttpCode changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("lb HealthCheckHttpCode %v should be changed to %v;",
 			remote.HealthCheckHttpCode, local.HealthCheckHttpCode)
 	}
 	if Is4LayerProtocol(local.Protocol) &&
@@ -857,7 +895,7 @@ func isNeedUpdate(reqCtx *RequestContext, local model.ListenerAttribute, remote 
 		remote.HealthCheckConnectTimeout != local.HealthCheckConnectTimeout {
 		needUpdate = true
 		update.HealthCheckConnectTimeout = local.HealthCheckConnectTimeout
-		updateDetail += fmt.Sprintf("HealthCheckConnectTimeout changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("lb HealthCheckConnectTimeout %v should be changed to %v;",
 			remote.HealthCheckConnectTimeout, local.HealthCheckConnectTimeout)
 	}
 	if Is7LayerProtocol(local.Protocol) &&
@@ -865,7 +903,7 @@ func isNeedUpdate(reqCtx *RequestContext, local model.ListenerAttribute, remote 
 		remote.HealthCheck != local.HealthCheck {
 		needUpdate = true
 		update.HealthCheck = local.HealthCheck
-		updateDetail += fmt.Sprintf("HealthCheck changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("lb HealthCheck %v should be changed to %v;",
 			remote.HealthCheck, local.HealthCheck)
 	}
 	if Is7LayerProtocol(local.Protocol) &&
@@ -873,8 +911,16 @@ func isNeedUpdate(reqCtx *RequestContext, local model.ListenerAttribute, remote 
 		remote.HealthCheckTimeout != local.HealthCheckTimeout {
 		needUpdate = true
 		update.HealthCheckTimeout = local.HealthCheckTimeout
-		updateDetail += fmt.Sprintf("HealthCheckTimeout changed: %v - %v ;",
+		updateDetail += fmt.Sprintf("lb HealthCheckTimeout %v should be changed to %v;",
 			remote.HealthCheckTimeout, local.HealthCheckTimeout)
+	}
+	if Is7LayerProtocol(local.Protocol) &&
+		local.HealthCheckMethod != "" &&
+		remote.HealthCheckMethod != local.HealthCheckMethod {
+		needUpdate = true
+		update.HealthCheckMethod = local.HealthCheckMethod
+		updateDetail += fmt.Sprintf("HealthCheckMethod changed: %v - %v ;",
+			remote.HealthCheckMethod, local.HealthCheckMethod)
 	}
 
 	reqCtx.Ctx = context.WithValue(reqCtx.Ctx, dryrun.ContextMessage, updateDetail)
