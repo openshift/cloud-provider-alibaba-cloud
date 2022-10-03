@@ -75,10 +75,14 @@ func (p *clientConnPool) getClientConn(req *http.Request, addr string, dialOnMis
 	for {
 		p.mu.Lock()
 		for _, cc := range p.conns[addr] {
-			if st := cc.idleState(); st.canTakeNewRequest {
-				if p.shouldTraceGetConn(st) {
+			if cc.ReserveNewRequest() {
+				// When a connection is presented to us by the net/http package,
+				// the GetConn hook has already been called.
+				// Don't call it a second time here.
+				if !cc.getConnCalled {
 					traceGetConn(req, addr)
 				}
+				cc.getConnCalled = false
 				p.mu.Unlock()
 				return cc, nil
 			}
@@ -94,7 +98,13 @@ func (p *clientConnPool) getClientConn(req *http.Request, addr string, dialOnMis
 		if shouldRetryDial(call, req) {
 			continue
 		}
-		return call.res, call.err
+		cc, err := call.res, call.err
+		if err != nil {
+			return nil, err
+		}
+		if cc.ReserveNewRequest() {
+			return cc, nil
+		}
 	}
 }
 
@@ -129,7 +139,6 @@ func (p *clientConnPool) getStartDialLocked(ctx context.Context, addr string) *d
 func (c *dialCall) dial(ctx context.Context, addr string) {
 	const singleUse = false // shared conn
 	c.res, c.err = c.p.t.dialClientConn(ctx, addr, singleUse)
-	close(c.done)
 
 	c.p.mu.Lock()
 	delete(c.p.dialing, addr)

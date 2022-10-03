@@ -113,31 +113,6 @@ type Statfs_t struct {
 	Mntonname   [1024]byte
 }
 
-type statfs_freebsd11_t struct {
-	Version     uint32
-	Type        uint32
-	Flags       uint64
-	Bsize       uint64
-	Iosize      uint64
-	Blocks      uint64
-	Bfree       uint64
-	Bavail      int64
-	Files       uint64
-	Ffree       int64
-	Syncwrites  uint64
-	Asyncwrites uint64
-	Syncreads   uint64
-	Asyncreads  uint64
-	Spare       [10]uint64
-	Namemax     uint32
-	Owner       uint32
-	Fsid        Fsid
-	Charspare   [80]int8
-	Fstypename  [16]byte
-	Mntfromname [88]byte
-	Mntonname   [88]byte
-}
-
 type Flock_t struct {
 	Start  int64
 	Len    int64

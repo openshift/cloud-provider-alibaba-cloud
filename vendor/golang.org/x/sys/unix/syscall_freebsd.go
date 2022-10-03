@@ -23,9 +23,6 @@ var (
 	osreldate     uint32
 )
 
-// INO64_FIRST from /usr/src/lib/libc/sys/compat-ino64.h
-const _ino64First = 1200031
-
 func supportsABI(ver uint32) bool {
 	osreldateOnce.Do(func() { osreldate, _ = SysctlUint32("kern.osreldate") })
 	return osreldate >= ver
@@ -164,11 +161,6 @@ func Getfsstat(buf []Statfs_t, flags int) (n int, err error) {
 	return
 }
 
-func setattrlistTimes(path string, times []Timespec, flags int) error {
-	// used on Darwin for UtimesNano
-	return ENOSYS
-}
-
 //sys	ioctl(fd int, req uint, arg uintptr) (err error)
 
 //sys	sysctl(mib []_C_int, old *byte, oldlen *uintptr, new *byte, newlen uintptr) (err error) = SYS___SYSCTL
@@ -250,132 +242,7 @@ func Getdirentries(fd int, buf []byte, basep *uintptr) (n int, err error) {
 }
 
 func Mknod(path string, mode uint32, dev uint64) (err error) {
-	var oldDev int
-	if supportsABI(_ino64First) {
-		return mknodat_freebsd12(AT_FDCWD, path, mode, dev)
-	}
-	oldDev = int(dev)
-	return mknod(path, mode, oldDev)
-}
-
-func Mknodat(fd int, path string, mode uint32, dev uint64) (err error) {
-	var oldDev int
-	if supportsABI(_ino64First) {
-		return mknodat_freebsd12(fd, path, mode, dev)
-	}
-	oldDev = int(dev)
-	return mknodat(fd, path, mode, oldDev)
-}
-
-// round x to the nearest multiple of y, larger or equal to x.
-//
-// from /usr/include/sys/param.h Macros for counting and rounding.
-// #define roundup(x, y)   ((((x)+((y)-1))/(y))*(y))
-func roundup(x, y int) int {
-	return ((x + y - 1) / y) * y
-}
-
-func (s *Stat_t) convertFrom(old *stat_freebsd11_t) {
-	*s = Stat_t{
-		Dev:     uint64(old.Dev),
-		Ino:     uint64(old.Ino),
-		Nlink:   uint64(old.Nlink),
-		Mode:    old.Mode,
-		Uid:     old.Uid,
-		Gid:     old.Gid,
-		Rdev:    uint64(old.Rdev),
-		Atim:    old.Atim,
-		Mtim:    old.Mtim,
-		Ctim:    old.Ctim,
-		Btim:    old.Btim,
-		Size:    old.Size,
-		Blocks:  old.Blocks,
-		Blksize: old.Blksize,
-		Flags:   old.Flags,
-		Gen:     uint64(old.Gen),
-	}
-}
-
-func (s *Statfs_t) convertFrom(old *statfs_freebsd11_t) {
-	*s = Statfs_t{
-		Version:     _statfsVersion,
-		Type:        old.Type,
-		Flags:       old.Flags,
-		Bsize:       old.Bsize,
-		Iosize:      old.Iosize,
-		Blocks:      old.Blocks,
-		Bfree:       old.Bfree,
-		Bavail:      old.Bavail,
-		Files:       old.Files,
-		Ffree:       old.Ffree,
-		Syncwrites:  old.Syncwrites,
-		Asyncwrites: old.Asyncwrites,
-		Syncreads:   old.Syncreads,
-		Asyncreads:  old.Asyncreads,
-		// Spare
-		Namemax: old.Namemax,
-		Owner:   old.Owner,
-		Fsid:    old.Fsid,
-		// Charspare
-		// Fstypename
-		// Mntfromname
-		// Mntonname
-	}
-
-	sl := old.Fstypename[:]
-	n := clen(*(*[]byte)(unsafe.Pointer(&sl)))
-	copy(s.Fstypename[:], old.Fstypename[:n])
-
-	sl = old.Mntfromname[:]
-	n = clen(*(*[]byte)(unsafe.Pointer(&sl)))
-	copy(s.Mntfromname[:], old.Mntfromname[:n])
-
-	sl = old.Mntonname[:]
-	n = clen(*(*[]byte)(unsafe.Pointer(&sl)))
-	copy(s.Mntonname[:], old.Mntonname[:n])
-}
-
-func convertFromDirents11(buf []byte, old []byte) int {
-	const (
-		fixedSize    = int(unsafe.Offsetof(Dirent{}.Name))
-		oldFixedSize = int(unsafe.Offsetof(dirent_freebsd11{}.Name))
-	)
-
-	dstPos := 0
-	srcPos := 0
-	for dstPos+fixedSize < len(buf) && srcPos+oldFixedSize < len(old) {
-		var dstDirent Dirent
-		var srcDirent dirent_freebsd11
-
-		// If multiple direntries are written, sometimes when we reach the final one,
-		// we may have cap of old less than size of dirent_freebsd11.
-		copy((*[unsafe.Sizeof(srcDirent)]byte)(unsafe.Pointer(&srcDirent))[:], old[srcPos:])
-
-		reclen := roundup(fixedSize+int(srcDirent.Namlen)+1, 8)
-		if dstPos+reclen > len(buf) {
-			break
-		}
-
-		dstDirent.Fileno = uint64(srcDirent.Fileno)
-		dstDirent.Off = 0
-		dstDirent.Reclen = uint16(reclen)
-		dstDirent.Type = srcDirent.Type
-		dstDirent.Pad0 = 0
-		dstDirent.Namlen = uint16(srcDirent.Namlen)
-		dstDirent.Pad1 = 0
-
-		copy(dstDirent.Name[:], srcDirent.Name[:srcDirent.Namlen])
-		copy(buf[dstPos:], (*[unsafe.Sizeof(dstDirent)]byte)(unsafe.Pointer(&dstDirent))[:])
-		padding := buf[dstPos+fixedSize+int(dstDirent.Namlen) : dstPos+reclen]
-		for i := range padding {
-			padding[i] = 0
-		}
-
-		dstPos += int(dstDirent.Reclen)
-		srcPos += int(srcDirent.Reclen)
-	}
-
-	return dstPos
+	return Mknodat(AT_FDCWD, path, mode, dev)
 }
 
 func Sendfile(outfd int, infd int, offset *int64, count int) (written int, err error) {

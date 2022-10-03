@@ -363,7 +363,7 @@ const (
 	CTL_KERN                       = 0x1
 	CTL_MAXNAME                    = 0x18
 	CTL_NET                        = 0x4
-	DIOCGATTR                      = 0xc144648e
+	DIOCGATTR                      = 0xc148648e
 	DIOCGDELETE                    = 0x80106488
 	DIOCGFLUSH                     = 0x20006487
 	DIOCGFRONTSTUFF                = 0x40086486
@@ -378,7 +378,7 @@ const (
 	DIOCGSTRIPESIZE                = 0x4008648b
 	DIOCSKERNELDUMP                = 0x804c6490
 	DIOCSKERNELDUMP_FREEBSD11      = 0x80046485
-	DIOCZONECMD                    = 0xc06c648f
+	DIOCZONECMD                    = 0xc078648f
 	DLT_A429                       = 0xb8
 	DLT_A653_ICM                   = 0xb9
 	DLT_AIRONET_HEADER             = 0x78
@@ -1007,7 +1007,6 @@ const (
 	KERN_VERSION                   = 0x4
 	LOCAL_CONNWAIT                 = 0x4
 	LOCAL_CREDS                    = 0x2
-	LOCAL_CREDS_PERSISTENT         = 0x3
 	LOCAL_PEERCRED                 = 0x1
 	LOCAL_VENDOR                   = 0x80000000
 	LOCK_EX                        = 0x2
@@ -1356,6 +1355,7 @@ const (
 	SCM_REALTIME                   = 0x5
 	SCM_RIGHTS                     = 0x1
 	SCM_TIMESTAMP                  = 0x2
+	SCM_TIME_INFO                  = 0x7
 	SEEK_CUR                       = 0x1
 	SEEK_DATA                      = 0x3
 	SEEK_END                       = 0x2

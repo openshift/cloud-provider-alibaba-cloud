@@ -393,29 +393,30 @@ type TCPConnectionInfo struct {
 }
 
 const (
-	SizeofSockaddrInet4    = 0x10
-	SizeofSockaddrInet6    = 0x1c
-	SizeofSockaddrAny      = 0x6c
-	SizeofSockaddrUnix     = 0x6a
-	SizeofSockaddrDatalink = 0x14
-	SizeofSockaddrCtl      = 0x20
-	SizeofSockaddrVM       = 0xc
-	SizeofXvsockpcb        = 0xa8
-	SizeofXSocket          = 0x64
-	SizeofXSockbuf         = 0x18
-	SizeofXVSockPgen       = 0x20
-	SizeofXucred           = 0x4c
-	SizeofLinger           = 0x8
-	SizeofIovec            = 0x10
-	SizeofIPMreq           = 0x8
-	SizeofIPMreqn          = 0xc
-	SizeofIPv6Mreq         = 0x14
-	SizeofMsghdr           = 0x30
-	SizeofCmsghdr          = 0xc
-	SizeofInet4Pktinfo     = 0xc
-	SizeofInet6Pktinfo     = 0x14
-	SizeofIPv6MTUInfo      = 0x20
-	SizeofICMPv6Filter     = 0x20
+	SizeofSockaddrInet4     = 0x10
+	SizeofSockaddrInet6     = 0x1c
+	SizeofSockaddrAny       = 0x6c
+	SizeofSockaddrUnix      = 0x6a
+	SizeofSockaddrDatalink  = 0x14
+	SizeofSockaddrCtl       = 0x20
+	SizeofSockaddrVM        = 0xc
+	SizeofXvsockpcb         = 0xa8
+	SizeofXSocket           = 0x64
+	SizeofXSockbuf          = 0x18
+	SizeofXVSockPgen        = 0x20
+	SizeofXucred            = 0x4c
+	SizeofLinger            = 0x8
+	SizeofIovec             = 0x10
+	SizeofIPMreq            = 0x8
+	SizeofIPMreqn           = 0xc
+	SizeofIPv6Mreq          = 0x14
+	SizeofMsghdr            = 0x30
+	SizeofCmsghdr           = 0xc
+	SizeofInet4Pktinfo      = 0xc
+	SizeofInet6Pktinfo      = 0x14
+	SizeofIPv6MTUInfo       = 0x20
+	SizeofICMPv6Filter      = 0x20
+	SizeofTCPConnectionInfo = 0x70
 )
 
 const (
@@ -667,13 +668,13 @@ type Eproc struct {
 	Tdev    int32
 	Tpgid   int32
 	Tsess   uintptr
-	Wmesg   [8]int8
+	Wmesg   [8]byte
 	Xsize   int32
 	Xrssize int16
 	Xccount int16
 	Xswrss  int16
 	Flag    int32
-	Login   [12]int8
+	Login   [12]byte
 	Spare   [4]int32
 	_       [4]byte
 }
@@ -714,7 +715,7 @@ type ExternProc struct {
 	P_priority  uint8
 	P_usrpri    uint8
 	P_nice      int8
-	P_comm      [17]int8
+	P_comm      [17]byte
 	P_pgrp      uintptr
 	P_addr      uintptr
 	P_xstat     uint16

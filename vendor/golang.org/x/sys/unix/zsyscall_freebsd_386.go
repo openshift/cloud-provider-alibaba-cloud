@@ -1256,7 +1256,7 @@ func Mknodat(fd int, path string, mode uint32, dev uint64) (err error) {
 	if err != nil {
 		return
 	}
-	_, _, e1 := Syscall6(SYS_MKNODAT_FREEBSD12, uintptr(fd), uintptr(unsafe.Pointer(_p0)), uintptr(mode), uintptr(dev), uintptr(dev>>32), 0)
+	_, _, e1 := Syscall6(SYS_MKNODAT, uintptr(fd), uintptr(unsafe.Pointer(_p0)), uintptr(mode), uintptr(dev), uintptr(dev>>32), 0)
 	if e1 != 0 {
 		err = errnoErr(e1)
 	}

@@ -207,6 +207,7 @@ struct ltchars {
 #include <linux/bpf.h>
 #include <linux/can.h>
 #include <linux/can/error.h>
+#include <linux/can/netlink.h>
 #include <linux/can/raw.h>
 #include <linux/capability.h>
 #include <linux/cryptouser.h>
@@ -234,6 +235,7 @@ struct ltchars {
 #include <linux/if_packet.h>
 #include <linux/if_xdp.h>
 #include <linux/input.h>
+#include <linux/kcm.h>
 #include <linux/kexec.h>
 #include <linux/keyctl.h>
 #include <linux/landlock.h>
@@ -533,7 +535,7 @@ ccflags="$@"
 		$2 ~ /^(MS|MNT|MOUNT|UMOUNT)_/ ||
 		$2 ~ /^NS_GET_/ ||
 		$2 ~ /^TUN(SET|GET|ATTACH|DETACH)/ ||
-		$2 ~ /^(O|F|[ES]?FD|NAME|S|PTRACE|PT|TFD)_/ ||
+		$2 ~ /^(O|F|[ES]?FD|NAME|S|PTRACE|PT|PIOD|TFD)_/ ||
 		$2 ~ /^KEXEC_/ ||
 		$2 ~ /^LINUX_REBOOT_CMD_/ ||
 		$2 ~ /^LINUX_REBOOT_MAGIC[12]$/ ||
@@ -605,6 +607,7 @@ ccflags="$@"
 		$2 ~ /^DEVLINK_/ ||
 		$2 ~ /^ETHTOOL_/ ||
 		$2 ~ /^LWTUNNEL_IP/ ||
+		$2 ~ /^ITIMER_/ ||
 		$2 !~ "WMESGLEN" &&
 		$2 ~ /^W[A-Z0-9]+$/ ||
 		$2 ~ /^P_/ ||
@@ -616,6 +619,8 @@ ccflags="$@"
 		$2 ~ /^MTD/ ||
 		$2 ~ /^OTP/ ||
 		$2 ~ /^MEM/ ||
+		$2 ~ /^WG/ ||
+		$2 ~ /^FIB_RULE_/ ||
 		$2 ~ /^BLK[A-Z]*(GET$|SET$|BUF$|PART$|SIZE)/ {printf("\t%s = C.%s\n", $2, $2)}
 		$2 ~ /^__WCOREFLAG$/ {next}
 		$2 ~ /^__W[A-Z0-9]+$/ {printf("\t%s = C.%s\n", substr($2,3), $2)}

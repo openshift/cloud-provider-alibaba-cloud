@@ -132,8 +132,10 @@ func Pipe2(p []int, flags int) error {
 	}
 	var pp [2]_C_int
 	err := pipe2(&pp, flags)
-	p[0] = int(pp[0])
-	p[1] = int(pp[1])
+	if err == nil {
+		p[0] = int(pp[0])
+		p[1] = int(pp[1])
+	}
 	return err
 }
 
@@ -876,9 +878,7 @@ type SockaddrL2TPIP struct {
 func (sa *SockaddrL2TPIP) sockaddr() (unsafe.Pointer, _Socklen, error) {
 	sa.raw.Family = AF_INET
 	sa.raw.Conn_id = sa.ConnId
-	for i := 0; i < len(sa.Addr); i++ {
-		sa.raw.Addr[i] = sa.Addr[i]
-	}
+	sa.raw.Addr = sa.Addr
 	return unsafe.Pointer(&sa.raw), SizeofSockaddrL2TPIP, nil
 }
 
@@ -894,9 +894,7 @@ func (sa *SockaddrL2TPIP6) sockaddr() (unsafe.Pointer, _Socklen, error) {
 	sa.raw.Family = AF_INET6
 	sa.raw.Conn_id = sa.ConnId
 	sa.raw.Scope_id = sa.ZoneId
-	for i := 0; i < len(sa.Addr); i++ {
-		sa.raw.Addr[i] = sa.Addr[i]
-	}
+	sa.raw.Addr = sa.Addr
 	return unsafe.Pointer(&sa.raw), SizeofSockaddrL2TPIP6, nil
 }
 
@@ -1031,18 +1029,14 @@ func anyToSockaddr(fd int, rsa *RawSockaddrAny) (Sockaddr, error) {
 			pp := (*RawSockaddrL2TPIP)(unsafe.Pointer(rsa))
 			sa := new(SockaddrL2TPIP)
 			sa.ConnId = pp.Conn_id
-			for i := 0; i < len(sa.Addr); i++ {
-				sa.Addr[i] = pp.Addr[i]
-			}
+			sa.Addr = pp.Addr
 			return sa, nil
 		default:
 			pp := (*RawSockaddrInet4)(unsafe.Pointer(rsa))
 			sa := new(SockaddrInet4)
 			p := (*[2]byte)(unsafe.Pointer(&pp.Port))
 			sa.Port = int(p[0])<<8 + int(p[1])
-			for i := 0; i < len(sa.Addr); i++ {
-				sa.Addr[i] = pp.Addr[i]
-			}
+			sa.Addr = pp.Addr
 			return sa, nil
 		}
 
@@ -1058,9 +1052,7 @@ func anyToSockaddr(fd int, rsa *RawSockaddrAny) (Sockaddr, error) {
 			sa := new(SockaddrL2TPIP6)
 			sa.ConnId = pp.Conn_id
 			sa.ZoneId = pp.Scope_id
-			for i := 0; i < len(sa.Addr); i++ {
-				sa.Addr[i] = pp.Addr[i]
-			}
+			sa.Addr = pp.Addr
 			return sa, nil
 		default:
 			pp := (*RawSockaddrInet6)(unsafe.Pointer(rsa))
@@ -1068,9 +1060,7 @@ func anyToSockaddr(fd int, rsa *RawSockaddrAny) (Sockaddr, error) {
 			p := (*[2]byte)(unsafe.Pointer(&pp.Port))
 			sa.Port = int(p[0])<<8 + int(p[1])
 			sa.ZoneId = pp.Scope_id
-			for i := 0; i < len(sa.Addr); i++ {
-				sa.Addr[i] = pp.Addr[i]
-			}
+			sa.Addr = pp.Addr
 			return sa, nil
 		}
 
@@ -2198,7 +2188,7 @@ func Faccessat(dirfd int, path string, mode uint32, flags int) (err error) {
 			gid = Getgid()
 		}
 
-		if uint32(gid) == st.Gid || isGroupMember(gid) {
+		if uint32(gid) == st.Gid || isGroupMember(int(st.Gid)) {
 			fmode = (st.Mode >> 3) & 7
 		} else {
 			fmode = st.Mode & 7
@@ -2313,11 +2303,58 @@ type RemoteIovec struct {
 
 //sys	PidfdOpen(pid int, flags int) (fd int, err error) = SYS_PIDFD_OPEN
 //sys	PidfdGetfd(pidfd int, targetfd int, flags int) (fd int, err error) = SYS_PIDFD_GETFD
+//sys	PidfdSendSignal(pidfd int, sig Signal, info *Siginfo, flags int) (err error) = SYS_PIDFD_SEND_SIGNAL
 
 //sys	shmat(id int, addr uintptr, flag int) (ret uintptr, err error)
 //sys	shmctl(id int, cmd int, buf *SysvShmDesc) (result int, err error)
 //sys	shmdt(addr uintptr) (err error)
 //sys	shmget(key int, size int, flag int) (id int, err error)
+
+//sys	getitimer(which int, currValue *Itimerval) (err error)
+//sys	setitimer(which int, newValue *Itimerval, oldValue *Itimerval) (err error)
+
+// MakeItimerval creates an Itimerval from interval and value durations.
+func MakeItimerval(interval, value time.Duration) Itimerval {
+	return Itimerval{
+		Interval: NsecToTimeval(interval.Nanoseconds()),
+		Value:    NsecToTimeval(value.Nanoseconds()),
+	}
+}
+
+// A value which may be passed to the which parameter for Getitimer and
+// Setitimer.
+type ItimerWhich int
+
+// Possible which values for Getitimer and Setitimer.
+const (
+	ItimerReal    ItimerWhich = ITIMER_REAL
+	ItimerVirtual ItimerWhich = ITIMER_VIRTUAL
+	ItimerProf    ItimerWhich = ITIMER_PROF
+)
+
+// Getitimer wraps getitimer(2) to return the current value of the timer
+// specified by which.
+func Getitimer(which ItimerWhich) (Itimerval, error) {
+	var it Itimerval
+	if err := getitimer(int(which), &it); err != nil {
+		return Itimerval{}, err
+	}
+
+	return it, nil
+}
+
+// Setitimer wraps setitimer(2) to arm or disarm the timer specified by which.
+// It returns the previous value of the timer.
+//
+// If the Itimerval argument is the zero value, the timer will be disarmed.
+func Setitimer(which ItimerWhich, it Itimerval) (Itimerval, error) {
+	var prev Itimerval
+	if err := setitimer(int(which), &it, &prev); err != nil {
+		return Itimerval{}, err
+	}
+
+	return prev, nil
+}
 
 /*
  * Unimplemented

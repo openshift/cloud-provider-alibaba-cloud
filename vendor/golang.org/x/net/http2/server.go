@@ -1770,7 +1770,7 @@ func (sc *serverConn) processData(f *DataFrame) error {
 			wrote, err := st.body.Write(data)
 			if err != nil {
 				sc.sendWindowUpdate(nil, int(f.Length)-wrote)
-				return streamError(id, ErrCodeStreamClosed)
+				return sc.countError("body_write_err", streamError(id, ErrCodeStreamClosed))
 			}
 			if wrote != len(data) {
 				panic("internal error: bad Writer")
