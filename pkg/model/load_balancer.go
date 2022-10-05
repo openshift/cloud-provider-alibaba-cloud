@@ -5,6 +5,7 @@ import (
 	"fmt"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/cloud-provider-alibaba-cloud/pkg/model/tag"
 	"strconv"
 	"strings"
 )
@@ -24,11 +25,23 @@ type InternetChargeType string
 
 const PayByBandwidth = InternetChargeType("paybybandwidth")
 
+// InstanceChargeType slb instance charge type
+type InstanceChargeType string
+
+func (t InstanceChargeType) IsPayBySpec() bool {
+	return t == "" || strings.ToLower(string(t)) == "paybyspec"
+}
+
+func (t InstanceChargeType) IsPayByCLCU() bool {
+	return strings.ToLower(string(t)) == "paybyclcu"
+}
+
 type AddressIPVersionType string
 
 const (
-	IPv4 = AddressIPVersionType("ipv4")
-	IPv6 = AddressIPVersionType("ipv6")
+	IPv4      = AddressIPVersionType("ipv4")
+	IPv6      = AddressIPVersionType("ipv6")
+	DualStack = AddressIPVersionType("dualstack")
 )
 
 type LoadBalancerSpecType string
@@ -70,7 +83,7 @@ type LoadBalancer struct {
 
 func (l *LoadBalancer) GetLoadBalancerId() string {
 	if l == nil {
-		return "not found"
+		return ""
 	}
 	return l.LoadBalancerAttribute.LoadBalancerId
 }
@@ -86,6 +99,7 @@ type LoadBalancerAttribute struct {
 	NetworkType                  string
 	Bandwidth                    int
 	InternetChargeType           InternetChargeType
+	InstanceChargeType           InstanceChargeType
 	DeleteProtection             FlagType
 	ModificationProtectionStatus ModificationProtectionType
 	ResourceGroupId              string
@@ -93,7 +107,7 @@ type LoadBalancerAttribute struct {
 	MasterZoneId                 string
 	SlaveZoneId                  string
 	AddressIPVersion             AddressIPVersionType
-	Tags                         []Tag
+	Tags                         []tag.Tag
 
 	// parameters are immutable
 	RegionId                     string
@@ -124,6 +138,7 @@ type ListenerAttribute struct {
 	Bandwidth                 int // values: -1 or 1~5120
 	Scheduler                 string
 	CertId                    string
+	TLSCipherPolicy           string
 	ForwardPort               int
 	EnableHttp2               FlagType
 	StickySession             FlagType
@@ -186,14 +201,6 @@ type BackendAttribute struct {
 	ServerIp    string `json:"serverIp"`
 	Weight      int    `json:"weight"`
 	Port        int    `json:"port"`
-	Type        string `json:"type"`
-}
-
-// DryRunBackendAttribute only used in DryRun mode, for updating backend description in dry run mode
-type DryRunBackendAttribute struct {
-	Description string `json:"description"`
-	ServerId    string `json:"serverId"`
-	ServerIp    string `json:"serverIp"`
 	Type        string `json:"type"`
 }
 
@@ -282,9 +289,4 @@ func LoadVGroupNamedKey(key string) (*VGroupNamedKey, error) {
 		ServiceName: metas[2],
 		VGroupPort:  metas[1],
 		Prefix:      DEFAULT_PREFIX}, nil
-}
-
-type Tag struct {
-	TagValue string
-	TagKey   string
 }

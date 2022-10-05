@@ -21,7 +21,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
-	"strings"
 	"time"
 )
 
@@ -64,6 +63,7 @@ func add(mgr manager.Manager, r *ReconcileNode) error {
 		controller.Options{
 			Reconciler:              r,
 			MaxConcurrentReconciles: 1,
+			RecoverPanic:            true,
 		},
 	)
 	if err != nil {
@@ -126,25 +126,43 @@ func (m *ReconcileNode) syncCloudNode(node *corev1.Node) error {
 		klog.V(5).Infof("node %s is registered without cloud taint. return ok", node.Name)
 		return nil
 	}
-	return m.doAddCloudNode(node)
+
+	start := time.Now()
+	defer func() {
+		metric.NodeLatency.WithLabelValues("remove_taint").Observe(metric.MsSince(start))
+	}()
+
+	nodeRef := &corev1.ObjectReference{
+		Kind:      "Node",
+		Name:      node.Name,
+		UID:       types.UID(node.Name),
+		Namespace: "",
+	}
+
+	err := m.doAddCloudNode(node)
+	if err != nil {
+		m.record.Event(
+			nodeRef,
+			corev1.EventTypeWarning,
+			helper.FailedAddNode,
+			fmt.Sprintf("Error adding node: %s", helper.GetLogMessage(err)),
+		)
+		return fmt.Errorf("doAddCloudNode %s error: %s", node.Name, err.Error())
+	}
+	m.record.Event(nodeRef, corev1.EventTypeNormal, helper.InitializedNode, "Initialize node successfully")
+	log.Info("Successfully initialized node", "node", node.Name)
+	return nil
 }
 
 // This processes nodes that were added into the cluster, and cloud initialize them if appropriate
 func (m *ReconcileNode) doAddCloudNode(node *corev1.Node) error {
-	start := time.Now()
-	prvdId := node.Spec.ProviderID
-	if prvdId == "" {
-		log.Info(fmt.Sprintf("warning: provider id not exist, skip %s initialize", node.Name))
-		return nil
-	}
-
-	instance, err := findCloudECS(m.cloud, prvdId)
+	instance, err := findCloudECS(m.cloud, node)
 	if err != nil {
 		if err == ErrNotFound {
-			log.Info("cloud instance %s not found", node.Name)
+			log.Info("cloud instance not found", "node", node.Name)
 			return nil
 		}
-		log.Error(err, "fail to find ecs", "providerId", prvdId)
+		log.Error(err, "fail to find ecs", "node", node.Name)
 		return fmt.Errorf("find ecs: %s", err.Error())
 	}
 
@@ -167,18 +185,6 @@ func (m *ReconcileNode) doAddCloudNode(node *corev1.Node) error {
 			log.Error(err, "fail to patch node", "node", node.Name)
 			return false, nil
 		}
-		tags := map[string]string{
-			"k8s.aliyun.com": "true",
-			"kubernetes.ccm": "true",
-		}
-		err = m.cloud.SetInstanceTags(context.TODO(), instance.InstanceID, tags)
-		if err != nil {
-			if !strings.Contains(err.Error(), "Forbidden.RAM") {
-				log.Error(err, "fail to tag instance", "node", instance.InstanceID)
-				//retry
-				return false, nil
-			}
-		}
 
 		log.Info("finished remove uninitialized cloud taints", "node", node.Name)
 		// After adding, call UpdateNodeAddress to set the CloudProvider provided IPAddresses
@@ -186,30 +192,7 @@ func (m *ReconcileNode) doAddCloudNode(node *corev1.Node) error {
 		_ = m.syncNode([]corev1.Node{*node})
 		return true, nil
 	}
-
-	nodeRef := &corev1.ObjectReference{
-		Kind:      "Node",
-		Name:      node.Name,
-		UID:       types.UID(node.Name),
-		Namespace: "",
-	}
-
-	err = wait.PollImmediate(2*time.Second, 20*time.Second, initializer)
-	if err != nil {
-		m.record.Event(
-			nodeRef,
-			corev1.EventTypeWarning,
-			helper.FailedAddNode,
-			fmt.Sprintf("Error adding node: %s", helper.GetLogMessage(err)),
-		)
-		return fmt.Errorf("doAddCloudNode %s error: %s", node.Name, err.Error())
-	}
-
-	m.record.Event(nodeRef, corev1.EventTypeNormal, helper.InitializedNode, "Initialize node successfully")
-	metric.NodeLatency.WithLabelValues("remove_taint").Observe(metric.MsSince(start))
-	log.Info("Successfully initialized node", "node", node.Name)
-
-	return nil
+	return wait.PollImmediate(5*time.Second, 20*time.Second, initializer)
 }
 
 // syncNode sync the nodeAddress & cloud node existence

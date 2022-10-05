@@ -2,11 +2,11 @@ package dryrun
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/model"
+	"k8s.io/cloud-provider-alibaba-cloud/pkg/model/tag"
 	prvd "k8s.io/cloud-provider-alibaba-cloud/pkg/provider"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/provider/alibaba/base"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/provider/alibaba/slb"
@@ -86,12 +86,20 @@ func (m *DryRunSLB) SetLoadBalancerModificationProtection(ctx context.Context, l
 	return hintError(mtype, fmt.Sprintf("loadbalancer %s ModificationProtection should be %s", lbId, flag))
 }
 
-func (m *DryRunSLB) AddTags(ctx context.Context, lbId string, tags string) error {
-	return m.slb.AddTags(ctx, lbId, tags)
+func (m *DryRunSLB) ModifyLoadBalancerInstanceChargeType(ctx context.Context, lbId string, instanceChargeType string, spec string) error {
+	mtype := "ModifyLoadBalancerInstanceChargeType"
+	svc := getService(ctx)
+	AddEvent(SLB, util.Key(svc), lbId, "ModifyLoadBalancerInstanceChargeType", ERROR, "")
+	return hintError(mtype, fmt.Sprintf("loadbalancer %s ModifyLoadBalancerInstanceChargeType should be %s with spec [%s]", lbId, instanceChargeType, spec))
 }
 
-func (m *DryRunSLB) DescribeTags(ctx context.Context, lbId string) ([]model.Tag, error) {
-	return m.slb.DescribeTags(ctx, lbId)
+// Tag
+func (m *DryRunSLB) TagCLBResource(ctx context.Context, resourceId string, tags []tag.Tag) error {
+	return nil
+}
+
+func (m *DryRunSLB) ListCLBTagResources(ctx context.Context, lbId string) ([]tag.Tag, error) {
+	return m.slb.ListCLBTagResources(ctx, lbId)
 }
 
 // Listener
@@ -226,8 +234,8 @@ func (m *DryRunSLB) DeleteVServerGroup(ctx context.Context, vGroupId string) err
 }
 
 /*
- From v1.9.3.239-g40d97e1-aliyun, ccm support ecs and eni together.
- If a svc who has ecs and eni backends together, it's normal to call the AddVServerGroupBackendServers api to add eci backend.
+From v1.9.3.239-g40d97e1-aliyun, ccm support ecs and eni together.
+If a svc who has ecs and eni backends together, it's normal to call the AddVServerGroupBackendServers api to add eci backend.
 */
 func (m *DryRunSLB) AddVServerGroupBackendServers(ctx context.Context, vGroupId string, backends string) error {
 	mtype := "AddVServerGroupBackendServers"
@@ -248,17 +256,8 @@ func (m *DryRunSLB) RemoveVServerGroupBackendServers(ctx context.Context, vGroup
 }
 
 func (m *DryRunSLB) SetVServerGroupAttribute(ctx context.Context, vGroupId string, backends string) error {
-	var updates []model.DryRunBackendAttribute
-	err := json.Unmarshal([]byte(backends), &updates)
-	if err != nil {
-		return fmt.Errorf("unmarshal [%s] error: %s", backends, err.Error())
-
-	}
-	dryRunStr, err := json.Marshal(updates)
-	if err != nil {
-		return fmt.Errorf("marshal [%+v] error: %s", updates, err.Error())
-	}
-	return m.slb.SetVServerGroupAttribute(ctx, vGroupId, string(dryRunStr))
+	// skip set VServerGroup attribute in DryRun mode. Backends will be reconciled when upgrading.
+	return nil
 }
 
 func (m *DryRunSLB) ModifyVServerGroupBackendServers(ctx context.Context, vGroupId string, old string, new string) error {

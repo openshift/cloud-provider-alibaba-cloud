@@ -26,8 +26,8 @@ func (d *DryRunECS) ListInstances(ctx context.Context, ids []string) (map[string
 	return d.ecs.ListInstances(ctx, ids)
 }
 
-func (d *DryRunECS) SetInstanceTags(ctx context.Context, id string, tags map[string]string) error {
-	return d.ecs.SetInstanceTags(ctx, id, tags)
+func (d *DryRunECS) GetInstancesByIP(ctx context.Context, ips []string) (*prvd.NodeAttribute, error) {
+	return d.ecs.GetInstancesByIP(ctx, ips)
 }
 
 func (d *DryRunECS) DescribeNetworkInterfaces(vpcId string, ips []string, ipVersionType model.AddressIPVersionType) (map[string]string, error) {

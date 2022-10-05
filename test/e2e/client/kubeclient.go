@@ -17,7 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/controller/helper"
-	"k8s.io/cloud-provider-alibaba-cloud/pkg/controller/service"
 	"k8s.io/klog/v2"
 )
 
@@ -73,9 +72,40 @@ func (client *KubeClient) CreateServiceByAnno(anno map[string]string) (*v1.Servi
 	return client.CoreV1().Services(Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 }
 
+func (client *KubeClient) CreateNLBServiceByAnno(anno map[string]string) (*v1.Service, error) {
+	svc := client.DefaultService()
+	lbClass := helper.NLBClass
+	svc.Spec.LoadBalancerClass = &lbClass
+	svc.Annotations = anno
+
+	return client.CoreV1().Services(Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
+}
+
 func (client *KubeClient) CreateServiceWithStringTargetPort(anno map[string]string) (*v1.Service, error) {
 	svc := client.DefaultService()
 	svc.Annotations = anno
+	svc.Spec.Ports = []v1.ServicePort{
+		{
+			Name:       "http",
+			Port:       80,
+			TargetPort: intstr.FromString("http"),
+			Protocol:   v1.ProtocolTCP,
+		},
+		{
+			Name:       "https",
+			Port:       443,
+			TargetPort: intstr.FromString("https"),
+			Protocol:   v1.ProtocolTCP,
+		},
+	}
+	return client.CoreV1().Services(Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
+}
+
+func (client *KubeClient) CreateNLBServiceWithStringTargetPort(anno map[string]string) (*v1.Service, error) {
+	lbClass := helper.NLBClass
+	svc := client.DefaultService()
+	svc.Annotations = anno
+	svc.Spec.LoadBalancerClass = &lbClass
 	svc.Spec.Ports = []v1.ServicePort{
 		{
 			Name:       "http",
@@ -140,9 +170,52 @@ func (client *KubeClient) CreateServiceWithoutSelector(anno map[string]string) (
 	return client.CoreV1().Services(Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
 }
 
+func (client *KubeClient) CreateNLBServiceWithoutSelector(anno map[string]string) (*v1.Service, error) {
+	lbClass := helper.NLBClass
+	svc := &v1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        Service,
+			Namespace:   Namespace,
+			Annotations: anno,
+		},
+		Spec: v1.ServiceSpec{
+			Ports: []v1.ServicePort{
+				{
+					Name:       "http",
+					Port:       80,
+					TargetPort: intstr.FromInt(80),
+					Protocol:   v1.ProtocolTCP,
+				},
+				{
+					Name:       "https",
+					Port:       443,
+					TargetPort: intstr.FromInt(80),
+					Protocol:   v1.ProtocolTCP,
+				},
+			},
+			Type:              v1.ServiceTypeLoadBalancer,
+			LoadBalancerClass: &lbClass,
+		},
+	}
+
+	return client.CoreV1().Services(Namespace).Create(context.TODO(), svc, metav1.CreateOptions{})
+}
+
 func (client *KubeClient) DeleteService() error {
-	return wait.PollImmediate(3*time.Second, time.Minute, func() (done bool, err error) {
+	return wait.PollImmediate(3*time.Second, 5*time.Minute, func() (done bool, err error) {
 		err = client.CoreV1().Services(Namespace).Delete(context.TODO(), Service, metav1.DeleteOptions{})
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return true, nil
+			}
+		}
+		return false, nil
+	})
+}
+
+func (client *KubeClient) DeleteServiceByName(name string) error {
+	return wait.PollImmediate(3*time.Second, 3*time.Minute, func() (done bool, err error) {
+		err = client.CoreV1().Services(Namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				return true, nil
@@ -242,7 +315,7 @@ func (client *KubeClient) CreateDeployment() error {
 					Containers: []v1.Container{
 						{
 							Name:            "nginx",
-							Image:           "nginx:1.9.7",
+							Image:           "registry.cn-hangzhou.aliyuncs.com/acs-sample/nginx:latest",
 							ImagePullPolicy: "Always",
 							Ports: []v1.ContainerPort{
 								{
@@ -460,6 +533,9 @@ func (client *KubeClient) UnLabelNode(nodeName string, key string) error {
 func (client *KubeClient) UnscheduledNode(nodeName string) error {
 	return wait.PollImmediate(2*time.Second, time.Minute, func() (done bool, err error) {
 		n, err := client.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
+		if err != nil || n == nil {
+			return false, nil
+		}
 		n.Spec.Unschedulable = true
 		_, err = client.CoreV1().Nodes().Update(context.TODO(), n, metav1.UpdateOptions{})
 		if err != nil {
@@ -473,6 +549,9 @@ func (client *KubeClient) UnscheduledNode(nodeName string) error {
 func (client *KubeClient) ScheduledNode(nodeName string) error {
 	return wait.PollImmediate(2*time.Second, time.Minute, func() (done bool, err error) {
 		n, err := client.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
+		if err != nil || n == nil {
+			return false, nil
+		}
 		n.Spec.Unschedulable = false
 		_, err = client.CoreV1().Nodes().Update(context.TODO(), n, metav1.UpdateOptions{})
 		if err != nil {
@@ -481,6 +560,47 @@ func (client *KubeClient) ScheduledNode(nodeName string) error {
 		return true, nil
 	})
 
+}
+
+func (client *KubeClient) AddTaint(nodeName string, taint v1.Taint) error {
+	return wait.PollImmediate(2*time.Second, 30*time.Second, func() (done bool, err error) {
+		n, err := client.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
+		if err != nil {
+			return false, nil
+		}
+		for _, taint := range n.Spec.Taints {
+			if taint.Key == taint.Key {
+				return true, nil
+			}
+		}
+		n.Spec.Taints = append(n.Spec.Taints, taint)
+		_, err = client.CoreV1().Nodes().Update(context.TODO(), n, metav1.UpdateOptions{})
+		if err != nil {
+			return false, nil
+		}
+		return true, nil
+	})
+}
+
+func (client *KubeClient) RemoveTaint(nodeName string, taint v1.Taint) error {
+	return wait.PollImmediate(2*time.Second, 30*time.Second, func() (done bool, err error) {
+		n, err := client.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
+		if err != nil {
+			return false, nil
+		}
+		var updateTaints []v1.Taint
+		for _, t := range n.Spec.Taints {
+			if t.Key == taint.Key {
+				continue
+			}
+			updateTaints = append(updateTaints, t)
+		}
+		_, err = client.CoreV1().Nodes().Update(context.TODO(), n, metav1.UpdateOptions{})
+		if err != nil {
+			return false, nil
+		}
+		return true, nil
+	})
 }
 
 func (client *KubeClient) ListNodes() ([]v1.Node, error) {
@@ -505,19 +625,19 @@ func (client *KubeClient) GetLatestNode() (*v1.Node, error) {
 		if helper.HasExcludeLabel(&node) {
 			continue
 		}
-		if _, isMaster := node.Labels[service.LabelNodeRoleMaster]; isMaster {
+		if _, exclude := node.Labels[helper.LabelNodeExcludeBalancer]; exclude {
 			continue
 		}
-		if _, exclude := node.Labels[service.LabelNodeExcludeBalancer]; exclude {
+		if _, isVK := node.Labels[helper.LabelNodeTypeVK]; isVK {
 			continue
 		}
-
 		if ret.Name == "" {
 			ret = node
 		} else if ret.CreationTimestamp.Before(&node.CreationTimestamp) {
 			ret = node
 		}
 	}
+	klog.Infof("return node:%s", ret.Name)
 	return &ret, nil
 }
 
