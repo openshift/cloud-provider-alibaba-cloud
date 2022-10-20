@@ -6,6 +6,31 @@
 
 ## Deploy CloudProvider in Alibaba Cloud 
 
+### Provider ID
+
+The Alibaba cloud provider uses provider ID to uniquely identify an instance world wide. The provider ID contains the region ID and instance ID separated by a period. To generate the provider ID, simply concatenate the region ID with a '.' and then the instance ID like this:
+```
+provider-id: <region-id>.<instance-id>
+```
+
+The region ID and instance ID is usually queried directly from the Alibaba metadata service at `http://100.100.100.200/latest/meta-data`, but can also be queried from the Alibaba cloud API directly.
+
+When a machine joins the cluster, the provider ID is generated on initial boot and passed into the kubelet using the `--provider-id` flag. The kubelet then passes this information to the control plane where it is added to the Node's config resource.
+
+This is an example of a Node's config resource with a provider ID set:
+```
+---
+apiVersion: v1
+kind: Node
+metadata:
+[... snip ...]
+spec:
+  providerID: alicloud://us-east-1.i-6we3vd11uhouthtvz8r1
+[... snip ...]
+status:
+[... snip ...]
+```
+
 ### Set up a supported Kubernetes Cluster using kubeadm
 
 kubeadm is an official installation tool for kubernetes. You could bring up a single master kubernetes cluster by following the instruction in this [page](https://kubernetes.io/docs/setup/independent/create-cluster-kubeadm/).
