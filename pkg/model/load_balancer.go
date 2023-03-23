@@ -141,6 +141,7 @@ type ListenerAttribute struct {
 	TLSCipherPolicy           string
 	ForwardPort               int
 	EnableHttp2               FlagType
+	EnableProxyProtocolV2     *bool
 	StickySession             FlagType
 	StickySessionType         string
 	Cookie                    string
@@ -171,6 +172,8 @@ type ListenerAttribute struct {
 	// The following parameters can be set to the default value.
 	// Use the pointer type to distinguish. If the user does not set the param, the param is nil
 	PersistenceTimeout *int
+
+	HealthCheckSwitch FlagType // tcp & udp
 }
 
 type VServerGroup struct {
@@ -202,6 +205,13 @@ type BackendAttribute struct {
 	Weight      int    `json:"weight"`
 	Port        int    `json:"port"`
 	Type        string `json:"type"`
+}
+
+type CertAttribute struct {
+	CreateTimeStamp     int64
+	ExpireTimeStamp     int64
+	ServerCertificateId string
+	CommonName          string // The domain name of the certificate.
 }
 
 // DEFAULT_PREFIX default prefix for listener

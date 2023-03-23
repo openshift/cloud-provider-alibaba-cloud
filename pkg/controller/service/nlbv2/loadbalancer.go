@@ -2,12 +2,14 @@ package nlbv2
 
 import (
 	"fmt"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/controller/helper"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/controller/service/reconcile/annotation"
 	svcCtx "k8s.io/cloud-provider-alibaba-cloud/pkg/controller/service/reconcile/context"
 	nlbmodel "k8s.io/cloud-provider-alibaba-cloud/pkg/model/nlb"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/model/tag"
 	prvd "k8s.io/cloud-provider-alibaba-cloud/pkg/provider"
+	"k8s.io/cloud-provider-alibaba-cloud/pkg/util"
 	"strings"
 )
 
@@ -35,6 +37,14 @@ func (mgr *NLBManager) BuildLocalModel(reqCtx *svcCtx.RequestContext, mdl *nlbmo
 		mdl.LoadBalancerAttribute.ZoneMappings = zoneMappings
 	} else if !mdl.LoadBalancerAttribute.IsUserManaged {
 		return fmt.Errorf("ParameterMissing, zone mappings are required")
+	}
+
+	if reqCtx.Anno.Has(annotation.SecurityGroupIds) {
+		mdl.LoadBalancerAttribute.SecurityGroupIds = []string{}
+		anno := reqCtx.Anno.Get(annotation.SecurityGroupIds)
+		if anno != "" {
+			mdl.LoadBalancerAttribute.SecurityGroupIds = strings.Split(anno, ",")
+		}
 	}
 
 	mdl.LoadBalancerAttribute.AddressType = nlbmodel.GetAddressType(reqCtx.Anno.Get(annotation.AddressType))
@@ -104,17 +114,20 @@ func (mgr *NLBManager) Delete(reqCtx *svcCtx.RequestContext, mdl *nlbmodel.Netwo
 
 func (mgr *NLBManager) Update(reqCtx *svcCtx.RequestContext, local, remote *nlbmodel.NetworkLoadBalancer) error {
 	local.LoadBalancerAttribute.LoadBalancerId = remote.LoadBalancerAttribute.LoadBalancerId
+	reqCtx.Log.Info(fmt.Sprintf("found nlb [%s], try to update load balancer attribute", remote.LoadBalancerAttribute.LoadBalancerId))
+	errs := []error{}
+
 	// immutable attributes
 	if local.LoadBalancerAttribute.AddressIpVersion != "" &&
 		!strings.EqualFold(local.LoadBalancerAttribute.AddressIpVersion, remote.LoadBalancerAttribute.AddressIpVersion) {
-		return fmt.Errorf("AddressIpVersion cannot be changed, service: %s, nlb: %s",
-			local.LoadBalancerAttribute.AddressIpVersion, remote.LoadBalancerAttribute.AddressIpVersion)
+		errs = append(errs, fmt.Errorf("AddressIpVersion cannot be changed, service: %s, nlb: %s",
+			local.LoadBalancerAttribute.AddressIpVersion, remote.LoadBalancerAttribute.AddressIpVersion))
 	}
 
 	if local.LoadBalancerAttribute.ResourceGroupId != "" &&
 		!strings.EqualFold(local.LoadBalancerAttribute.ResourceGroupId, remote.LoadBalancerAttribute.ResourceGroupId) {
-		return fmt.Errorf("ResourceGroupId cannot be changed, service: %s, nlb: %s",
-			local.LoadBalancerAttribute.ResourceGroupId, remote.LoadBalancerAttribute.ResourceGroupId)
+		errs = append(errs, fmt.Errorf("ResourceGroupId cannot be changed, service: %s, nlb: %s",
+			local.LoadBalancerAttribute.ResourceGroupId, remote.LoadBalancerAttribute.ResourceGroupId))
 	}
 
 	// mutable
@@ -123,7 +136,7 @@ func (mgr *NLBManager) Update(reqCtx *svcCtx.RequestContext, local, remote *nlbm
 		reqCtx.Log.Info(fmt.Sprintf("AddressType changed from [%s] to [%s]",
 			local.LoadBalancerAttribute.AddressType, remote.LoadBalancerAttribute.AddressType))
 		if err := mgr.cloud.UpdateNLBAddressType(reqCtx.Ctx, local); err != nil {
-			return fmt.Errorf("UpdateNLBAddressType error: %s", err.Error())
+			errs = append(errs, fmt.Errorf("UpdateNLBAddressType error: %s", err.Error()))
 		}
 	}
 
@@ -145,7 +158,36 @@ func (mgr *NLBManager) Update(reqCtx *svcCtx.RequestContext, local, remote *nlbm
 		reqCtx.Log.Info(fmt.Sprintf("ZoneMappings changed from [%s] to [%s]",
 			remote.LoadBalancerAttribute.ZoneMappings, local.LoadBalancerAttribute.ZoneMappings))
 		if err := mgr.cloud.UpdateNLBZones(reqCtx.Ctx, local); err != nil {
-			return fmt.Errorf("update zone mappings error: %s", err.Error())
+			errs = append(errs, fmt.Errorf("update zone mappings error: %s", err.Error()))
+		}
+	}
+
+	if local.LoadBalancerAttribute.SecurityGroupIds != nil &&
+		!util.IsStringSliceEqual(local.LoadBalancerAttribute.SecurityGroupIds, remote.LoadBalancerAttribute.SecurityGroupIds) {
+		reqCtx.Log.Info(fmt.Sprintf("SecurityGroupIds changed from %v to %v",
+			remote.LoadBalancerAttribute.SecurityGroupIds, local.LoadBalancerAttribute.SecurityGroupIds))
+		// get difference
+		var added, removed []string
+		newMap := map[string]struct{}{}
+		oldMap := map[string]struct{}{}
+		for _, i := range local.LoadBalancerAttribute.SecurityGroupIds {
+			newMap[i] = struct{}{}
+		}
+		for _, i := range remote.LoadBalancerAttribute.SecurityGroupIds {
+			oldMap[i] = struct{}{}
+			if _, ok := newMap[i]; !ok {
+				removed = append(removed, i)
+			}
+		}
+		for _, i := range local.LoadBalancerAttribute.SecurityGroupIds {
+			if _, ok := oldMap[i]; !ok {
+				added = append(added, i)
+			}
+		}
+
+		reqCtx.Log.Info(fmt.Sprintf("security groups added %v, removed %v", added, removed))
+		if err := mgr.cloud.UpdateNLBSecurityGroupIds(reqCtx.Ctx, local, added, removed); err != nil {
+			return fmt.Errorf("update security group ids error: %s", err.Error())
 		}
 	}
 
@@ -158,10 +200,10 @@ func (mgr *NLBManager) Update(reqCtx *svcCtx.RequestContext, local, remote *nlbm
 	}
 
 	if needUpdate {
-		return mgr.cloud.UpdateNLB(reqCtx.Ctx, local)
+		errs = append(errs, mgr.cloud.UpdateNLB(reqCtx.Ctx, local))
 	}
 
-	return nil
+	return utilerrors.NewAggregate(errs)
 }
 
 func setDefaultValueForLoadBalancer(mgr *NLBManager, mdl *nlbmodel.NetworkLoadBalancer, anno *annotation.AnnotationRequest,

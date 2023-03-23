@@ -11,7 +11,6 @@ import (
 	nlbmodel "k8s.io/cloud-provider-alibaba-cloud/pkg/model/nlb"
 
 	"github.com/aliyun/alibaba-cloud-sdk-go/services/alb"
-	"github.com/aliyun/alibaba-cloud-sdk-go/services/cas"
 	"github.com/aliyun/alibaba-cloud-sdk-go/services/sls"
 	"github.com/aliyun/alibaba-cloud-sdk-go/services/vpc"
 	v1 "k8s.io/api/core/v1"
@@ -105,9 +104,9 @@ type ILoadBalancer interface {
 
 	// Listener
 	DescribeLoadBalancerListeners(ctx context.Context, lbId string) ([]model.ListenerAttribute, error)
-	StartLoadBalancerListener(ctx context.Context, lbId string, port int) error
-	StopLoadBalancerListener(ctx context.Context, lbId string, port int) error
-	DeleteLoadBalancerListener(ctx context.Context, lbId string, port int) error
+	StartLoadBalancerListener(ctx context.Context, lbId string, port int, proto string) error
+	StopLoadBalancerListener(ctx context.Context, lbId string, port int, proto string) error
+	DeleteLoadBalancerListener(ctx context.Context, lbId string, port int, proto string) error
 	CreateLoadBalancerTCPListener(ctx context.Context, lbId string, listener model.ListenerAttribute) error
 	SetLoadBalancerTCPListenerAttribute(ctx context.Context, lbId string, listener model.ListenerAttribute) error
 	CreateLoadBalancerUDPListener(ctx context.Context, lbId string, listener model.ListenerAttribute) error
@@ -130,6 +129,9 @@ type ILoadBalancer interface {
 	// Tag
 	TagCLBResource(ctx context.Context, resourceId string, tags []tag.Tag) error
 	ListCLBTagResources(ctx context.Context, lbId string) ([]tag.Tag, error)
+
+	// Cert
+	DescribeServerCertificateById(ctx context.Context, serverCertificateId string) (*model.CertAttribute, error)
 }
 
 type IPrivateZone interface {
@@ -144,8 +146,8 @@ type ISLS interface {
 }
 
 type ICAS interface {
-	DescribeSSLCertificateList(ctx context.Context, request *cas.DescribeSSLCertificateListRequest) (*cas.DescribeSSLCertificateListResponse, error)
-	DescribeSSLCertificatePublicKeyDetail(ctx context.Context, request *cas.DescribeSSLCertificatePublicKeyDetailRequest) (*cas.DescribeSSLCertificatePublicKeyDetailResponse, error)
+	DescribeSSLCertificatePublicKeyDetail(ctx context.Context, certId string) (*model.CertificateInfo, error)
+	DescribeSSLCertificateList(ctx context.Context) ([]model.CertificateInfo, error)
 }
 
 type IALB interface {
@@ -199,6 +201,7 @@ type INLB interface {
 	UpdateNLB(ctx context.Context, mdl *nlbmodel.NetworkLoadBalancer) error
 	UpdateNLBAddressType(ctx context.Context, mdl *nlbmodel.NetworkLoadBalancer) error
 	UpdateNLBZones(ctx context.Context, mdl *nlbmodel.NetworkLoadBalancer) error
+	UpdateNLBSecurityGroupIds(ctx context.Context, mdl *nlbmodel.NetworkLoadBalancer, added, removed []string) error
 
 	// ServerGroup
 	ListNLBServerGroups(ctx context.Context, tags []tag.Tag) ([]*nlbmodel.ServerGroup, error)

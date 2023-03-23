@@ -3,9 +3,11 @@ package slb
 import (
 	"context"
 	"fmt"
-	"k8s.io/klog/v2"
 	"reflect"
 	"strconv"
+
+	"github.com/alibabacloud-go/tea/tea"
+	"k8s.io/klog/v2"
 
 	"github.com/aliyun/alibaba-cloud-sdk-go/sdk/requests"
 	"github.com/aliyun/alibaba-cloud-sdk-go/services/slb"
@@ -72,26 +74,29 @@ func (p SLBProvider) DescribeLoadBalancerListeners(ctx context.Context, lbId str
 	return listeners, nil
 }
 
-func (p SLBProvider) StartLoadBalancerListener(ctx context.Context, lbId string, port int) error {
+func (p SLBProvider) StartLoadBalancerListener(ctx context.Context, lbId string, port int, proto string) error {
 	req := slb.CreateStartLoadBalancerListenerRequest()
 	req.LoadBalancerId = lbId
 	req.ListenerPort = requests.NewInteger(port)
+	req.ListenerProtocol = proto
 	_, err := p.auth.SLB.StartLoadBalancerListener(req)
 	return util.SDKError("StartLoadBalancerListener", err)
 }
 
-func (p SLBProvider) StopLoadBalancerListener(ctx context.Context, lbId string, port int) error {
+func (p SLBProvider) StopLoadBalancerListener(ctx context.Context, lbId string, port int, proto string) error {
 	req := slb.CreateStopLoadBalancerListenerRequest()
 	req.LoadBalancerId = lbId
 	req.ListenerPort = requests.NewInteger(port)
+	req.ListenerProtocol = proto
 	_, err := p.auth.SLB.StopLoadBalancerListener(req)
 	return util.SDKError("StopLoadBalancerListener", err)
 }
 
-func (p SLBProvider) DeleteLoadBalancerListener(ctx context.Context, lbId string, port int) error {
+func (p SLBProvider) DeleteLoadBalancerListener(ctx context.Context, lbId string, port int, proto string) error {
 	req := slb.CreateDeleteLoadBalancerListenerRequest()
 	req.LoadBalancerId = lbId
 	req.ListenerPort = requests.NewInteger(port)
+	req.ListenerProtocol = proto
 
 	_, err := p.auth.SLB.DeleteLoadBalancerListener(req)
 	return util.SDKError("DeleteLoadBalancerListener", err)
@@ -276,6 +281,10 @@ func setTCPListenerValue(req interface{}, listener *model.ListenerAttribute) {
 		healthCheckDomain := v.FieldByName("HealthCheckDomain")
 		healthCheckDomain.SetString(listener.HealthCheckDomain)
 	}
+	if listener.HealthCheckSwitch != "" {
+		healthCheckSwitch := v.FieldByName("HealthCheckSwitch")
+		healthCheckSwitch.SetString(string(listener.HealthCheckSwitch))
+	}
 
 	if listener.ConnectionDrain != "" {
 		connectionDrain := v.FieldByName("ConnectionDrain")
@@ -284,6 +293,10 @@ func setTCPListenerValue(req interface{}, listener *model.ListenerAttribute) {
 	if listener.ConnectionDrainTimeout != 0 {
 		connectionDrainTimeout := v.FieldByName("ConnectionDrainTimeout")
 		connectionDrainTimeout.SetString(strconv.Itoa(listener.ConnectionDrainTimeout))
+	}
+	if listener.EnableProxyProtocolV2 != nil {
+		enabled := v.FieldByName("ProxyProtocolV2Enabled")
+		enabled.SetString(string(requests.NewBoolean(*listener.EnableProxyProtocolV2)))
 	}
 }
 
@@ -301,6 +314,14 @@ func setUDPListenerValue(req interface{}, listener *model.ListenerAttribute) {
 	if listener.ConnectionDrainTimeout != 0 {
 		connectionDrainTimeout := v.FieldByName("ConnectionDrainTimeout")
 		connectionDrainTimeout.SetString(strconv.Itoa(listener.ConnectionDrainTimeout))
+	}
+	if listener.HealthCheckSwitch != "" {
+		healthCheckSwitch := v.FieldByName("HealthCheckSwitch")
+		healthCheckSwitch.SetString(string(listener.HealthCheckSwitch))
+	}
+	if listener.EnableProxyProtocolV2 != nil {
+		enabled := v.FieldByName("ProxyProtocolV2Enabled")
+		enabled.SetString(string(requests.NewBoolean(*listener.EnableProxyProtocolV2)))
 	}
 
 }
@@ -446,6 +467,10 @@ func loadTCPListener(config slb.TCPListenerConfig, listener *model.ListenerAttri
 	listener.HealthCheckDomain = config.HealthCheckDomain
 	listener.HealthCheckURI = config.HealthCheckURI
 	listener.HealthCheckType = config.HealthCheckType
+	listener.HealthCheckSwitch = model.FlagType(config.HealthCheckSwitch)
+	if config.ProxyProtocolV2Enabled != "" {
+		listener.EnableProxyProtocolV2 = tea.Bool(config.ProxyProtocolV2Enabled == "true")
+	}
 }
 
 func loadUDPListener(config slb.UDPListenerConfig, listener *model.ListenerAttribute) {
@@ -456,6 +481,10 @@ func loadUDPListener(config slb.UDPListenerConfig, listener *model.ListenerAttri
 	listener.HealthCheckConnectTimeout = config.HealthCheckConnectTimeout
 	listener.HealthCheckConnectPort = config.HealthCheckConnectPort
 	listener.HealthCheckInterval = config.HealthCheckInterval
+	listener.HealthCheckSwitch = model.FlagType(config.HealthCheckSwitch)
+	if config.ProxyProtocolV2Enabled != "" {
+		listener.EnableProxyProtocolV2 = tea.Bool(config.ProxyProtocolV2Enabled == "true")
+	}
 }
 
 func loadHTTPListener(config slb.HTTPListenerConfig, listener *model.ListenerAttribute) {

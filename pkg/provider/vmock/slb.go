@@ -207,13 +207,13 @@ func (m *MockCLB) DescribeLoadBalancerListeners(ctx context.Context, lbId string
 
 	return nil, nil
 }
-func (m *MockCLB) StartLoadBalancerListener(ctx context.Context, lbId string, port int) error {
+func (m *MockCLB) StartLoadBalancerListener(ctx context.Context, lbId string, port int, proto string) error {
 	return nil
 }
-func (m *MockCLB) StopLoadBalancerListener(ctx context.Context, lbId string, port int) error {
+func (m *MockCLB) StopLoadBalancerListener(ctx context.Context, lbId string, port int, proto string) error {
 	return nil
 }
-func (m *MockCLB) DeleteLoadBalancerListener(ctx context.Context, lbId string, port int) error {
+func (m *MockCLB) DeleteLoadBalancerListener(ctx context.Context, lbId string, port int, proto string) error {
 	return nil
 }
 func (m *MockCLB) CreateLoadBalancerTCPListener(ctx context.Context, lbId string, listener model.ListenerAttribute) error {
@@ -410,4 +410,8 @@ func (m *MockCLB) SetVServerGroupAttribute(ctx context.Context, vGroupId string,
 }
 func (m *MockCLB) ModifyVServerGroupBackendServers(ctx context.Context, vGroupId string, old string, new string) error {
 	return nil
+}
+
+func (m *MockCLB) DescribeServerCertificateById(ctx context.Context, serverCertificateId string) (*model.CertAttribute, error) {
+	return nil, nil
 }
