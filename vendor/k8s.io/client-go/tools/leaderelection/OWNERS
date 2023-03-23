@@ -3,11 +3,9 @@
 approvers:
   - mikedanese
 reviewers:
-- wojtek-t
-- deads2k
-- mikedanese
-- gmarek
-- eparis
-- timothysc
-- ingvagabund
-- resouer
+  - wojtek-t
+  - deads2k
+  - mikedanese
+  - ingvagabund
+emeritus_approvers:
+  - timothysc

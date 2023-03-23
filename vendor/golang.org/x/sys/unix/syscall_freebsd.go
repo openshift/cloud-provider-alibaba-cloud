@@ -23,11 +23,6 @@ var (
 	osreldate     uint32
 )
 
-// INO64_FIRST from /usr/src/lib/libc/sys/compat-ino64.h
-const _ino64First = 1200031
-
-//sys	sysctl(mib []_C_int, old *byte, oldlen *uintptr, new *byte, newlen uintptr) (err error) = SYS___SYSCTL
-
 func supportsABI(ver uint32) bool {
 	osreldateOnce.Do(func() { osreldate, _ = SysctlUint32("kern.osreldate") })
 	return osreldate >= ver
@@ -44,6 +39,10 @@ type SockaddrDatalink struct {
 	Slen   uint8
 	Data   [46]int8
 	raw    RawSockaddrDatalink
+}
+
+func anyToSockaddrGOOS(fd int, rsa *RawSockaddrAny) (Sockaddr, error) {
+	return nil, EAFNOSUPPORT
 }
 
 // Translate "kern.hostname" to []_C_int{0,1,2,3}.
@@ -116,6 +115,15 @@ func SetsockoptIPMreqn(fd, level, opt int, mreq *IPMreqn) (err error) {
 	return setsockopt(fd, level, opt, unsafe.Pointer(mreq), unsafe.Sizeof(*mreq))
 }
 
+// GetsockoptXucred is a getsockopt wrapper that returns an Xucred struct.
+// The usual level and opt are SOL_LOCAL and LOCAL_PEERCRED, respectively.
+func GetsockoptXucred(fd, level, opt int) (*Xucred, error) {
+	x := new(Xucred)
+	vallen := _Socklen(SizeofXucred)
+	err := getsockopt(fd, level, opt, unsafe.Pointer(x), &vallen)
+	return x, err
+}
+
 func Accept4(fd, flags int) (nfd int, sa Sockaddr, err error) {
 	var rsa RawSockaddrAny
 	var len _Socklen = SizeofSockaddrAny
@@ -134,22 +142,7 @@ func Accept4(fd, flags int) (nfd int, sa Sockaddr, err error) {
 	return
 }
 
-const ImplementsGetwd = true
-
 //sys	Getcwd(buf []byte) (n int, err error) = SYS___GETCWD
-
-func Getwd() (string, error) {
-	var buf [PathMax]byte
-	_, err := Getcwd(buf[0:])
-	if err != nil {
-		return "", err
-	}
-	n := clen(buf[:])
-	if n < 1 {
-		return "", EINVAL
-	}
-	return string(buf[:n]), nil
-}
 
 func Getfsstat(buf []Statfs_t, flags int) (n int, err error) {
 	var (
@@ -168,12 +161,9 @@ func Getfsstat(buf []Statfs_t, flags int) (n int, err error) {
 	return
 }
 
-func setattrlistTimes(path string, times []Timespec, flags int) error {
-	// used on Darwin for UtimesNano
-	return ENOSYS
-}
+//sys	ioctl(fd int, req uint, arg uintptr) (err error)
 
-//sys   ioctl(fd int, req uint, arg uintptr) (err error)
+//sys	sysctl(mib []_C_int, old *byte, oldlen *uintptr, new *byte, newlen uintptr) (err error) = SYS___SYSCTL
 
 func Uname(uname *Utsname) error {
 	mib := []_C_int{CTL_KERN, KERN_OSTYPE}
@@ -252,127 +242,7 @@ func Getdirentries(fd int, buf []byte, basep *uintptr) (n int, err error) {
 }
 
 func Mknod(path string, mode uint32, dev uint64) (err error) {
-	var oldDev int
-	if supportsABI(_ino64First) {
-		return mknodat_freebsd12(AT_FDCWD, path, mode, dev)
-	}
-	oldDev = int(dev)
-	return mknod(path, mode, oldDev)
-}
-
-func Mknodat(fd int, path string, mode uint32, dev uint64) (err error) {
-	var oldDev int
-	if supportsABI(_ino64First) {
-		return mknodat_freebsd12(fd, path, mode, dev)
-	}
-	oldDev = int(dev)
-	return mknodat(fd, path, mode, oldDev)
-}
-
-// round x to the nearest multiple of y, larger or equal to x.
-//
-// from /usr/include/sys/param.h Macros for counting and rounding.
-// #define roundup(x, y)   ((((x)+((y)-1))/(y))*(y))
-func roundup(x, y int) int {
-	return ((x + y - 1) / y) * y
-}
-
-func (s *Stat_t) convertFrom(old *stat_freebsd11_t) {
-	*s = Stat_t{
-		Dev:     uint64(old.Dev),
-		Ino:     uint64(old.Ino),
-		Nlink:   uint64(old.Nlink),
-		Mode:    old.Mode,
-		Uid:     old.Uid,
-		Gid:     old.Gid,
-		Rdev:    uint64(old.Rdev),
-		Atim:    old.Atim,
-		Mtim:    old.Mtim,
-		Ctim:    old.Ctim,
-		Btim:    old.Btim,
-		Size:    old.Size,
-		Blocks:  old.Blocks,
-		Blksize: old.Blksize,
-		Flags:   old.Flags,
-		Gen:     uint64(old.Gen),
-	}
-}
-
-func (s *Statfs_t) convertFrom(old *statfs_freebsd11_t) {
-	*s = Statfs_t{
-		Version:     _statfsVersion,
-		Type:        old.Type,
-		Flags:       old.Flags,
-		Bsize:       old.Bsize,
-		Iosize:      old.Iosize,
-		Blocks:      old.Blocks,
-		Bfree:       old.Bfree,
-		Bavail:      old.Bavail,
-		Files:       old.Files,
-		Ffree:       old.Ffree,
-		Syncwrites:  old.Syncwrites,
-		Asyncwrites: old.Asyncwrites,
-		Syncreads:   old.Syncreads,
-		Asyncreads:  old.Asyncreads,
-		// Spare
-		Namemax: old.Namemax,
-		Owner:   old.Owner,
-		Fsid:    old.Fsid,
-		// Charspare
-		// Fstypename
-		// Mntfromname
-		// Mntonname
-	}
-
-	sl := old.Fstypename[:]
-	n := clen(*(*[]byte)(unsafe.Pointer(&sl)))
-	copy(s.Fstypename[:], old.Fstypename[:n])
-
-	sl = old.Mntfromname[:]
-	n = clen(*(*[]byte)(unsafe.Pointer(&sl)))
-	copy(s.Mntfromname[:], old.Mntfromname[:n])
-
-	sl = old.Mntonname[:]
-	n = clen(*(*[]byte)(unsafe.Pointer(&sl)))
-	copy(s.Mntonname[:], old.Mntonname[:n])
-}
-
-func convertFromDirents11(buf []byte, old []byte) int {
-	const (
-		fixedSize    = int(unsafe.Offsetof(Dirent{}.Name))
-		oldFixedSize = int(unsafe.Offsetof(dirent_freebsd11{}.Name))
-	)
-
-	dstPos := 0
-	srcPos := 0
-	for dstPos+fixedSize < len(buf) && srcPos+oldFixedSize < len(old) {
-		dstDirent := (*Dirent)(unsafe.Pointer(&buf[dstPos]))
-		srcDirent := (*dirent_freebsd11)(unsafe.Pointer(&old[srcPos]))
-
-		reclen := roundup(fixedSize+int(srcDirent.Namlen)+1, 8)
-		if dstPos+reclen > len(buf) {
-			break
-		}
-
-		dstDirent.Fileno = uint64(srcDirent.Fileno)
-		dstDirent.Off = 0
-		dstDirent.Reclen = uint16(reclen)
-		dstDirent.Type = srcDirent.Type
-		dstDirent.Pad0 = 0
-		dstDirent.Namlen = uint16(srcDirent.Namlen)
-		dstDirent.Pad1 = 0
-
-		copy(dstDirent.Name[:], srcDirent.Name[:srcDirent.Namlen])
-		padding := buf[dstPos+fixedSize+int(dstDirent.Namlen) : dstPos+reclen]
-		for i := range padding {
-			padding[i] = 0
-		}
-
-		dstPos += int(dstDirent.Reclen)
-		srcPos += int(srcDirent.Reclen)
-	}
-
-	return dstPos
+	return Mknodat(AT_FDCWD, path, mode, dev)
 }
 
 func Sendfile(outfd int, infd int, offset *int64, count int) (written int, err error) {
@@ -400,18 +270,8 @@ func PtraceGetFpRegs(pid int, fpregsout *FpReg) (err error) {
 	return ptrace(PT_GETFPREGS, pid, uintptr(unsafe.Pointer(fpregsout)), 0)
 }
 
-func PtraceGetFsBase(pid int, fsbase *int64) (err error) {
-	return ptrace(PTRACE_GETFSBASE, pid, uintptr(unsafe.Pointer(fsbase)), 0)
-}
-
 func PtraceGetRegs(pid int, regsout *Reg) (err error) {
 	return ptrace(PT_GETREGS, pid, uintptr(unsafe.Pointer(regsout)), 0)
-}
-
-func PtraceIO(req int, pid int, addr uintptr, out []byte, countin int) (count int, err error) {
-	ioDesc := PtraceIoDesc{Op: int32(req), Offs: (*byte)(unsafe.Pointer(addr)), Addr: (*byte)(unsafe.Pointer(&out[0])), Len: uint(countin)}
-	err = ptrace(PTRACE_IO, pid, uintptr(unsafe.Pointer(&ioDesc)), 0)
-	return int(ioDesc.Len), err
 }
 
 func PtraceLwpEvents(pid int, enable int) (err error) {
@@ -556,8 +416,8 @@ func PtraceSingleStep(pid int) (err error) {
 //sys	Unlinkat(dirfd int, path string, flags int) (err error)
 //sys	Unmount(path string, flags int) (err error)
 //sys	write(fd int, p []byte) (n int, err error)
-//sys   mmap(addr uintptr, length uintptr, prot int, flag int, fd int, pos int64) (ret uintptr, err error)
-//sys   munmap(addr uintptr, length uintptr) (err error)
+//sys	mmap(addr uintptr, length uintptr, prot int, flag int, fd int, pos int64) (ret uintptr, err error)
+//sys	munmap(addr uintptr, length uintptr) (err error)
 //sys	readlen(fd int, buf *byte, nbuf int) (n int, err error) = SYS_READ
 //sys	writelen(fd int, buf *byte, nbuf int) (n int, err error) = SYS_WRITE
 //sys	accept4(fd int, rsa *RawSockaddrAny, addrlen *_Socklen, flags int) (nfd int, err error)
