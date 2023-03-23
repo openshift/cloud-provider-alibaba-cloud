@@ -15,6 +15,7 @@ require (
 	github.com/mohae/deepcopy v0.0.0-20170603005431-491d3605edfb
 	github.com/onsi/ginkgo/v2 v2.9.1
 	github.com/onsi/gomega v1.27.4
+	github.com/golangci/golangci-lint v1.52.2
 	github.com/orcaman/concurrent-map v0.0.0-20210501183033-44dafcb38ecc
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.14.0
