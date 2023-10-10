@@ -60,14 +60,16 @@ const (
 	ModificationProtection = AnnotationLoadBalancerPrefix + "modification-protection"  // ModificationProtection modification type
 	ExternalIPType         = AnnotationLoadBalancerPrefix + "external-ip-type"         // ExternalIPType external ip type
 	HostName               = AnnotationLoadBalancerPrefix + "hostname"                 // HostName hostname for service.status.ingress.hostname
+	IP                     = AnnotationLoadBalancerPrefix + "ip"                       // Ip Address
 
 	// Listener Attribute
 	AclStatus                 = AnnotationLoadBalancerPrefix + "acl-status"                   // AclStatus enable or disable acl on all listener
 	AclID                     = AnnotationLoadBalancerPrefix + "acl-id"                       // AclID acl id
 	AclType                   = AnnotationLoadBalancerPrefix + "acl-type"                     // AclType acl type, black or white
 	ForwardPort               = AnnotationLoadBalancerPrefix + "forward-port"                 // ForwardPort loadbalancer forward port
-	EnableHttp2               = AnnotationLoadBalancerPrefix + "http2-enabled"                //EnableHttp2 enable http2 on https port
-	HealthCheckFlag           = AnnotationLoadBalancerPrefix + "health-check-flag"            // HealthCheckFlag health check flag
+	EnableHttp2               = AnnotationLoadBalancerPrefix + "http2-enabled"                // EnableHttp2 enable http2 on https port
+	HealthCheckSwitch         = AnnotationLoadBalancerPrefix + "health-check-switch"          // HealthCheckSwitch health check switch flag, only for tcp & udp
+	HealthCheckFlag           = AnnotationLoadBalancerPrefix + "health-check-flag"            // HealthCheckFlag health check flag, only for http & https
 	HealthCheckType           = AnnotationLoadBalancerPrefix + "health-check-type"            // HealthCheckType health check type
 	HealthCheckURI            = AnnotationLoadBalancerPrefix + "health-check-uri"             // HealthCheckURI health check uri
 	HealthCheckConnectPort    = AnnotationLoadBalancerPrefix + "health-check-connect-port"    // HealthCheckConnectPort health check connect port
@@ -88,6 +90,7 @@ const (
 	XForwardedForProto        = AnnotationLoadBalancerPrefix + "xforwardedfor-proto"          // XForwardedForProto whether to use the X-Forwarded-Proto header to retrieve the listener protocol
 	RequestTimeout            = AnnotationLoadBalancerPrefix + "request-timeout"              // RequestTimeout request timeout for L7
 	EstablishedTimeout        = AnnotationLoadBalancerPrefix + "established-timeout"          // EstablishedTimeout connection established time out for TCP
+	ProxyProtocol             = AnnotationLoadBalancerPrefix + "proxy-protocol"
 
 	// VServerBackend Attribute
 	BackendLabel      = AnnotationLoadBalancerPrefix + "backend-label"              // BackendLabel backend labels
@@ -99,14 +102,28 @@ const (
 
 // network load balancer
 const (
-	ZoneMaps = AnnotationLoadBalancerPrefix + "zone-maps" // ZoneMaps zone maps
+	ZoneMaps         = AnnotationLoadBalancerPrefix + "zone-maps" // ZoneMaps zone maps
+	SecurityGroupIds = AnnotationLoadBalancerPrefix + "security-group-ids"
 
-	ProxyProtocol = AnnotationLoadBalancerPrefix + "proxy-protocol"
-	CaCertID      = AnnotationLoadBalancerPrefix + "cacert-id" // CertID cert id
-	CaCert        = AnnotationLoadBalancerPrefix + "cacert"    // CaCert enable ca
-	Cps           = AnnotationLoadBalancerPrefix + "cps"
+	CaCertID = AnnotationLoadBalancerPrefix + "cacert-id" // CertID cert id
+	CaCert   = AnnotationLoadBalancerPrefix + "cacert"    // CaCert enable ca
+	Cps      = AnnotationLoadBalancerPrefix + "cps"
 
 	PreserveClientIp = AnnotationLoadBalancerPrefix + "preserve-client-ip"
+)
+
+// edge load balancer
+const (
+	EdgeLoadBalancerReUse = AnnotationLoadBalancerPrefix + "reuse"
+	EdgeNetWorkId         = AnnotationLoadBalancerPrefix + "network-id"
+	EdgeServerWeight      = AnnotationLoadBalancerPrefix + "backend-weight"
+	EdgePayType           = AnnotationLegacyPrefix + "pay-type"
+
+	EdgeEipAssociate          = AnnotationLoadBalancerPrefix + "associate-eip"
+	EdgeEipId                 = AnnotationLoadBalancerPrefix + "eip-id"
+	EdgeEipBandwidth          = AnnotationLoadBalancerPrefix + "eip-bandwidth"
+	EdgeEipInternetChargeType = AnnotationLoadBalancerPrefix + "eip-internet-chargetype"
+	EdgeEipInstanceChargeType = AnnotationLoadBalancerPrefix + "eip-instance-chargetype"
 )
 
 var DefaultValue = map[string]string{
@@ -145,6 +162,28 @@ func (n *AnnotationRequest) Get(k string) string {
 	}
 
 	return ""
+}
+
+func (n *AnnotationRequest) Has(k string) bool {
+	if n.Service == nil {
+		return false
+	}
+
+	if n.Service.Annotations == nil {
+		return false
+	}
+
+	key := composite(AnnotationPrefix, k)
+	if _, ok := n.Service.Annotations[key]; ok {
+		return true
+	}
+
+	key = composite(AnnotationLegacyPrefix, k)
+	if _, ok := n.Service.Annotations[key]; ok {
+		return true
+	}
+
+	return false
 }
 
 func (n *AnnotationRequest) GetDefaultValue(k string) string {

@@ -1,23 +1,19 @@
 package e2e
 
 import (
-	"k8s.io/cloud-provider-alibaba-cloud/test/e2e/testcase/service/clbv1"
-	"k8s.io/cloud-provider-alibaba-cloud/test/e2e/testcase/service/nlbv2"
-	"strings"
-	"testing"
-
+	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/util"
-
 	"k8s.io/cloud-provider-alibaba-cloud/test/e2e/client"
 	"k8s.io/cloud-provider-alibaba-cloud/test/e2e/framework"
 	"k8s.io/cloud-provider-alibaba-cloud/test/e2e/options"
 	"k8s.io/cloud-provider-alibaba-cloud/test/e2e/testcase/node"
 	"k8s.io/cloud-provider-alibaba-cloud/test/e2e/testcase/route"
+	"k8s.io/cloud-provider-alibaba-cloud/test/e2e/testcase/service/clbv1"
+	"k8s.io/cloud-provider-alibaba-cloud/test/e2e/testcase/service/nlbv2"
 	"k8s.io/klog/v2"
-	"k8s.io/kubernetes/test/e2e/framework/ginkgowrapper"
-
-	"github.com/onsi/ginkgo"
-	"github.com/onsi/gomega"
+	"strings"
+	"testing"
 )
 
 func init() {
@@ -45,19 +41,17 @@ func TestE2E(t *testing.T) {
 	}
 	klog.Infof("test config: %s", util.PrettyJson(options.TestConfig))
 
-	gomega.RegisterFailHandler(ginkgowrapper.Fail)
+	ginkgo.BeforeSuite(func() {
+		err = f.BeforeSuit()
+		gomega.Expect(err).To(gomega.BeNil())
+	})
+
+	ginkgo.AfterSuite(func() {
+		err = f.AfterSuit()
+		gomega.Expect(err).To(gomega.BeNil())
+	})
+
 	ginkgo.Describe("Run cloud controller manager e2e tests", func() {
-
-		ginkgo.BeforeSuite(func() {
-			err = f.BeforeSuit()
-			gomega.Expect(err).To(gomega.BeNil())
-		})
-
-		ginkgo.AfterSuite(func() {
-			err = f.AfterSuit()
-			gomega.Expect(err).To(gomega.BeNil())
-		})
-
 		AddControllerTests(f)
 	})
 
