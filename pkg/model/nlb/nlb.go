@@ -113,6 +113,7 @@ type LoadBalancerAttribute struct {
 	ZoneMappings     []ZoneMapping
 	ResourceGroupId  string
 	Tags             []tag.Tag
+	SecurityGroupIds []string
 
 	// auto-generated parameters
 	LoadBalancerId             string
@@ -175,6 +176,9 @@ type ServerGroup struct {
 }
 
 func (s *ServerGroup) BackendInfo() string {
+	if len(s.Servers) > 100 {
+		s.Servers = s.Servers[:100]
+	}
 	backendJson, err := json.Marshal(s.Servers)
 	if err != nil {
 		return fmt.Sprintf("%v", s.Servers)

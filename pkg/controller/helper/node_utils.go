@@ -24,7 +24,8 @@ const (
 	LabelNodeTypeVK     = "virtual-kubelet"
 	// LabelNodeExcludeBalancer specifies that the node should be
 	// exclude from loadbalancers created by a cloud provider.
-	LabelNodeExcludeBalancer = "alpha.service-controller.kubernetes.io/exclude-balancer"
+	LabelNodeExcludeBalancerDeprecated = "alpha.service-controller.kubernetes.io/exclude-balancer"
+	LabelNodeExcludeBalancer           = v1.LabelNodeExcludeBalancers
 	// ToBeDeletedTaint is a taint used by the CLuster Autoscaler before marking a node for deletion.
 	// Details in https://github.com/kubernetes/cloud-provider/blob/5bb9b27442bcb2613a9ca4046c89109de4435824/controllers/service/controller.go#L58
 	ToBeDeletedTaint = "ToBeDeletedByClusterAutoscaler"
@@ -89,13 +90,31 @@ func PatchM(mclient client.Client, target client.Object, getter func(runtime.Obj
 }
 
 func FindCondition(conds []v1.NodeCondition, conditionType v1.NodeConditionType) (*v1.NodeCondition, bool) {
+	var retCon *v1.NodeCondition
 	for i := range conds {
 		if conds[i].Type == conditionType {
-			return &conds[i], true
+			if retCon == nil || retCon.LastHeartbeatTime.Before(&conds[i].LastHeartbeatTime) {
+				retCon = &conds[i]
+			}
 		}
 	}
-	// condition not found, do not trigger repair
-	return &v1.NodeCondition{}, false
+
+	if retCon == nil {
+		return &v1.NodeCondition{}, false
+	} else {
+		return retCon, true
+	}
+}
+
+// GetNodeCondition will get pointer to Node's existing condition.
+// returns nil if no matching condition found.
+func GetNodeCondition(node *v1.Node, conditionType v1.NodeConditionType) *v1.NodeCondition {
+	for i := range node.Status.Conditions {
+		if node.Status.Conditions[i].Type == conditionType {
+			return &node.Status.Conditions[i]
+		}
+	}
+	return nil
 }
 
 func HasExcludeLabel(node *v1.Node) bool {
@@ -150,7 +169,22 @@ func IsNodeExcludeFromLoadBalancer(node *v1.Node) bool {
 		return true
 	}
 
+	if _, exclude := node.Labels[LabelNodeExcludeBalancerDeprecated]; exclude {
+		return true
+	}
+
 	if HasExcludeLabel(node) {
+		return true
+	}
+	return false
+}
+
+func IsNodeExcludeFromEdgeLoadBalancer(node *v1.Node) bool {
+	if _, exclude := node.Labels[LabelNodeExcludeBalancer]; exclude {
+		return true
+	}
+
+	if _, exclude := node.Labels[LabelNodeExcludeBalancerDeprecated]; exclude {
 		return true
 	}
 	return false

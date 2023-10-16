@@ -8,10 +8,10 @@ import (
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/controller/ingress/reconcile/tracking"
 
 	albmodel "k8s.io/cloud-provider-alibaba-cloud/pkg/model/alb"
+	elbmodel "k8s.io/cloud-provider-alibaba-cloud/pkg/model/elb"
 	nlbmodel "k8s.io/cloud-provider-alibaba-cloud/pkg/model/nlb"
 
 	"github.com/aliyun/alibaba-cloud-sdk-go/services/alb"
-	"github.com/aliyun/alibaba-cloud-sdk-go/services/cas"
 	"github.com/aliyun/alibaba-cloud-sdk-go/services/sls"
 	"github.com/aliyun/alibaba-cloud-sdk-go/services/vpc"
 	v1 "k8s.io/api/core/v1"
@@ -28,6 +28,7 @@ type Provider interface {
 	INLB
 	ISLS
 	ICAS
+	IELB
 }
 
 type RoleAuth struct {
@@ -105,9 +106,9 @@ type ILoadBalancer interface {
 
 	// Listener
 	DescribeLoadBalancerListeners(ctx context.Context, lbId string) ([]model.ListenerAttribute, error)
-	StartLoadBalancerListener(ctx context.Context, lbId string, port int) error
-	StopLoadBalancerListener(ctx context.Context, lbId string, port int) error
-	DeleteLoadBalancerListener(ctx context.Context, lbId string, port int) error
+	StartLoadBalancerListener(ctx context.Context, lbId string, port int, proto string) error
+	StopLoadBalancerListener(ctx context.Context, lbId string, port int, proto string) error
+	DeleteLoadBalancerListener(ctx context.Context, lbId string, port int, proto string) error
 	CreateLoadBalancerTCPListener(ctx context.Context, lbId string, listener model.ListenerAttribute) error
 	SetLoadBalancerTCPListenerAttribute(ctx context.Context, lbId string, listener model.ListenerAttribute) error
 	CreateLoadBalancerUDPListener(ctx context.Context, lbId string, listener model.ListenerAttribute) error
@@ -130,6 +131,9 @@ type ILoadBalancer interface {
 	// Tag
 	TagCLBResource(ctx context.Context, resourceId string, tags []tag.Tag) error
 	ListCLBTagResources(ctx context.Context, lbId string) ([]tag.Tag, error)
+
+	// Cert
+	DescribeServerCertificateById(ctx context.Context, serverCertificateId string) (*model.CertAttribute, error)
 }
 
 type IPrivateZone interface {
@@ -144,8 +148,8 @@ type ISLS interface {
 }
 
 type ICAS interface {
-	DescribeSSLCertificateList(ctx context.Context, request *cas.DescribeSSLCertificateListRequest) (*cas.DescribeSSLCertificateListResponse, error)
-	DescribeSSLCertificatePublicKeyDetail(ctx context.Context, request *cas.DescribeSSLCertificatePublicKeyDetailRequest) (*cas.DescribeSSLCertificatePublicKeyDetailResponse, error)
+	DescribeSSLCertificatePublicKeyDetail(ctx context.Context, certId string) (*model.CertificateInfo, error)
+	DescribeSSLCertificateList(ctx context.Context) ([]model.CertificateInfo, error)
 }
 
 type IALB interface {
@@ -199,6 +203,7 @@ type INLB interface {
 	UpdateNLB(ctx context.Context, mdl *nlbmodel.NetworkLoadBalancer) error
 	UpdateNLBAddressType(ctx context.Context, mdl *nlbmodel.NetworkLoadBalancer) error
 	UpdateNLBZones(ctx context.Context, mdl *nlbmodel.NetworkLoadBalancer) error
+	UpdateNLBSecurityGroupIds(ctx context.Context, mdl *nlbmodel.NetworkLoadBalancer, added, removed []string) error
 
 	// ServerGroup
 	ListNLBServerGroups(ctx context.Context, tags []tag.Tag) ([]*nlbmodel.ServerGroup, error)
@@ -215,4 +220,50 @@ type INLB interface {
 	UpdateNLBListener(ctx context.Context, lis *nlbmodel.ListenerAttribute) error
 	DeleteNLBListener(ctx context.Context, listenerId string) error
 	StartNLBListener(ctx context.Context, listenerId string) error
+}
+
+type IELB interface {
+	// ELB
+	FindEdgeLoadBalancer(ctx context.Context, mdl *elbmodel.EdgeLoadBalancer) error
+	CreateEdgeLoadBalancer(ctx context.Context, mdl *elbmodel.EdgeLoadBalancer) error
+	DeleteEdgeLoadBalancer(ctx context.Context, mdl *elbmodel.EdgeLoadBalancer) error
+	DescribeEdgeLoadBalancerById(ctx context.Context, lbId string, mdl *elbmodel.EdgeLoadBalancer) error
+	DescribeEdgeLoadBalancerByName(ctx context.Context, lbName string, mdl *elbmodel.EdgeLoadBalancer) error
+	SetEdgeLoadBalancerStatus(ctx context.Context, status string, mdl *elbmodel.EdgeLoadBalancer) error
+
+	// EIP
+	CreateEip(ctx context.Context, mdl *elbmodel.EdgeLoadBalancer) error
+	ReleaseEip(ctx context.Context, eipId string) error
+	AssociateElbEipAddress(ctx context.Context, eipId, lbId string) error
+	UnAssociateElbEipAddress(ctx context.Context, eipId string) error
+	ModifyEipAttribute(ctx context.Context, eipId string, mdl *elbmodel.EdgeLoadBalancer) error
+	DescribeEnsEipAddressesById(ctx context.Context, eipId string, mdl *elbmodel.EdgeLoadBalancer) error
+	DescribeEnsEipAddressesByName(ctx context.Context, eipName string, mdl *elbmodel.EdgeLoadBalancer) error
+	FindAssociatedInstance(ctx context.Context, mdl *elbmodel.EdgeLoadBalancer) error
+
+	// Listener
+	FindEdgeLoadBalancerListener(ctx context.Context, lbId string, listeners *elbmodel.EdgeListeners) error
+	DescribeEdgeLoadBalancerTCPListener(ctx context.Context, lbId string, port int, listener *elbmodel.EdgeListenerAttribute) error
+	DescribeEdgeLoadBalancerUDPListener(ctx context.Context, lbId string, port int, listener *elbmodel.EdgeListenerAttribute) error
+	DescribeEdgeLoadBalancerHTTPListener(ctx context.Context, lbId string, port int, listener *elbmodel.EdgeListenerAttribute) error
+	DescribeEdgeLoadBalancerHTTPSListener(ctx context.Context, lbId string, port int, listener *elbmodel.EdgeListenerAttribute) error
+	StartEdgeLoadBalancerListener(ctx context.Context, lbId string, port int, protocol string) error
+	StopEdgeLoadBalancerListener(ctx context.Context, lbId string, port int, protocol string) error
+	CreateEdgeLoadBalancerTCPListener(ctx context.Context, lbId string, listener *elbmodel.EdgeListenerAttribute) error
+	CreateEdgeLoadBalancerUDPListener(ctx context.Context, lbId string, listener *elbmodel.EdgeListenerAttribute) error
+	ModifyEdgeLoadBalancerTCPListener(ctx context.Context, lbId string, listener *elbmodel.EdgeListenerAttribute) error
+	ModifyEdgeLoadBalancerUDPListener(ctx context.Context, lbId string, listener *elbmodel.EdgeListenerAttribute) error
+	DeleteEdgeLoadBalancerListener(ctx context.Context, lbId string, port int, protocol string) error
+
+	// Server Group
+	AddBackendToEdgeServerGroup(ctx context.Context, lbId string, sg *elbmodel.EdgeServerGroup) error
+	UpdateEdgeServerGroup(ctx context.Context, lbId string, sg *elbmodel.EdgeServerGroup) error
+	RemoveBackendFromEdgeServerGroup(ctx context.Context, lbId string, sg *elbmodel.EdgeServerGroup) error
+	FindBackendFromLoadBalancer(ctx context.Context, lbId string, sg *elbmodel.EdgeServerGroup) error
+
+	// ENS instance
+	GetEnsRegionIdByNetwork(ctx context.Context, networkId string) (string, error)
+	FindNetWorkAndVSwitchByLoadBalancerId(ctx context.Context, lbId string) ([]string, error)
+	FindEnsInstancesByNetwork(ctx context.Context, mdl *elbmodel.EdgeLoadBalancer) (map[string]string, error)
+	DescribeNetwork(ctx context.Context, mdl *elbmodel.EdgeLoadBalancer) error
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/alibabacloud-go/tea/tea"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -179,6 +180,11 @@ func loadBalancerAttrEqual(f *Framework, anno *annotation.AnnotationRequest, svc
 	if MasterZoneId := anno.Get(annotation.MasterZoneID); MasterZoneId != "" {
 		if lb.MasterZoneId != MasterZoneId {
 			return fmt.Errorf("expected slb MasterZoneId %s, got %s", MasterZoneId, lb.MasterZoneId)
+		}
+	}
+	if Address := anno.Get(annotation.IP); Address != "" {
+		if lb.Address != Address {
+			return fmt.Errorf("expected slb Address %s, got %s", Address, lb.Address)
 		}
 	}
 	if SlaveZoneId := anno.Get(annotation.SlaveZoneID); SlaveZoneId != "" {
@@ -496,6 +502,13 @@ func tcpEqual(reqCtx *svcCtx.RequestContext, local v1.ServicePort, remote model.
 			return fmt.Errorf("expected slb connectionDrainTimeout %d, got %d", timeout, remote.ConnectionDrainTimeout)
 		}
 	}
+	if proxyProtocolV2 := reqCtx.Anno.Get(annotation.ProxyProtocol); proxyProtocolV2 != "" {
+		localEnabled := proxyProtocolV2 == string(model.OnFlag)
+		remoteEnabled := tea.BoolValue(remote.EnableProxyProtocolV2)
+		if localEnabled != remoteEnabled {
+			return fmt.Errorf("expected slb proxyprotocol v2 enabled %t, got %t", localEnabled, remoteEnabled)
+		}
+	}
 	return nil
 }
 
@@ -528,6 +541,13 @@ func udpEqual(reqCtx *svcCtx.RequestContext, local v1.ServicePort, remote model.
 		}
 		if remote.ConnectionDrainTimeout != timeout {
 			return fmt.Errorf("expected slb connectionDrainTimeout %d, got %d", timeout, remote.ConnectionDrainTimeout)
+		}
+	}
+	if proxyProtocolV2 := reqCtx.Anno.Get(annotation.ProxyProtocol); proxyProtocolV2 != "" {
+		localEnabled := proxyProtocolV2 == string(model.OnFlag)
+		remoteEnabled := tea.BoolValue(remote.EnableProxyProtocolV2)
+		if localEnabled != remoteEnabled {
+			return fmt.Errorf("expected slb proxyprotocol v2 enabled: %t, got %t", localEnabled, remoteEnabled)
 		}
 	}
 	return nil
@@ -1100,6 +1120,10 @@ func podNumberAlgorithm(mode helper.TrafficPolicy, backends []model.BackendAttri
 }
 
 func podPercentAlgorithm(mode helper.TrafficPolicy, backends []model.BackendAttribute, weight int) []model.BackendAttribute {
+	if len(backends) == 0 {
+		return backends
+	}
+
 	if weight == 0 {
 		for i := range backends {
 			backends[i].Weight = 0
@@ -1184,6 +1208,10 @@ func isNodeExcludeFromLoadBalancer(node *v1.Node, anno *annotation.AnnotationReq
 	}
 
 	if _, exclude := node.Labels[helper.LabelNodeExcludeBalancer]; exclude {
+		return true
+	}
+
+	if _, exclude := node.Labels[helper.LabelNodeExcludeBalancerDeprecated]; exclude {
 		return true
 	}
 

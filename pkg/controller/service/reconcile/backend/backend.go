@@ -1,10 +1,12 @@
 package backend
 
 import (
+	"context"
 	"fmt"
 	v1 "k8s.io/api/core/v1"
 	discovery "k8s.io/api/discovery/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	ctrlCfg "k8s.io/cloud-provider-alibaba-cloud/pkg/config"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/controller/helper"
@@ -97,9 +99,9 @@ func (e *EndpointWithENI) setAddressIpVersion(reqCtx *svcCtx.RequestContext) {
 	e.AddressIPVersion = model.IPv4
 }
 
-func GetNodes(reqCtx *svcCtx.RequestContext, client client.Client) ([]v1.Node, error) {
+func GetNodes(reqCtx *svcCtx.RequestContext, kubeClient client.Client) ([]v1.Node, error) {
 	nodeList := v1.NodeList{}
-	err := client.List(reqCtx.Ctx, &nodeList)
+	err := kubeClient.List(reqCtx.Ctx, &nodeList)
 	if err != nil {
 		return nil, fmt.Errorf("get nodes error: %s", err.Error())
 	}
@@ -194,7 +196,8 @@ func needExcludeFromLB(reqCtx *svcCtx.RequestContext, node *v1.Node) bool {
 		// condition status is ConditionTrue
 		if cond.Type == v1.NodeReady &&
 			cond.Status != v1.ConditionTrue {
-			reqCtx.Log.Info(fmt.Sprintf("node not ready with %v condition, status %v", cond.Type, cond.Status),
+			reqCtx.Log.Info(fmt.Sprintf("node not ready with %v condition, status %v. raw conditions [%v]",
+				cond.Type, cond.Status, node.Status.Conditions),
 				"node", node.Name)
 			return true
 		}
@@ -203,9 +206,9 @@ func needExcludeFromLB(reqCtx *svcCtx.RequestContext, node *v1.Node) bool {
 	return false
 }
 
-func getEndpoints(reqCtx *svcCtx.RequestContext, client client.Client) (*v1.Endpoints, error) {
+func getEndpoints(reqCtx *svcCtx.RequestContext, kubeClient client.Client) (*v1.Endpoints, error) {
 	eps := &v1.Endpoints{}
-	err := client.Get(reqCtx.Ctx, util.NamespacedName(reqCtx.Service), eps)
+	err := kubeClient.Get(context.Background(), util.NamespacedName(reqCtx.Service), eps)
 	if err != nil && apierrors.IsNotFound(err) {
 		reqCtx.Log.Info("warning: endpoint not found")
 		return eps, nil
@@ -215,7 +218,7 @@ func getEndpoints(reqCtx *svcCtx.RequestContext, client client.Client) (*v1.Endp
 
 func getEndpointByEndpointSlice(reqCtx *svcCtx.RequestContext, kubeClient client.Client, ipVersion model.AddressIPVersionType) ([]discovery.EndpointSlice, error) {
 	epsList := &discovery.EndpointSliceList{}
-	err := kubeClient.List(reqCtx.Ctx, epsList, client.MatchingLabels{
+	err := kubeClient.List(context.Background(), epsList, client.MatchingLabels{
 		discovery.LabelServiceName: reqCtx.Service.Name,
 	}, client.InNamespace(reqCtx.Service.Namespace))
 	if err != nil {
@@ -246,9 +249,9 @@ type Func func([]interface{}) error
 
 // Batch batch process `object` m with func `func`
 // for general purpose
-func Batch(m interface{}, cnt int, batch Func) error {
-	if cnt <= 0 {
-		cnt = MaxBackendNum
+func Batch(m interface{}, batchSize int, f Func) error {
+	if batchSize <= 0 {
+		batchSize = MaxBackendNum
 	}
 	v := reflect.ValueOf(m)
 	if v.Kind() != reflect.Slice {
@@ -261,18 +264,26 @@ func Batch(m interface{}, cnt int, batch Func) error {
 	for i := 0; i < v.Len(); i++ {
 		target[i] = v.Index(i).Interface()
 	}
-	klog.Infof("batch process ,total length %d", len(target))
-	for len(target) > cnt {
-		if err := batch(target[0:cnt]); err != nil {
+	total := len(target)
+	klog.Infof("batch process ,total length %d", total)
 
-			return err
+	var errs []error
+	beginIdx := 0
+	for {
+		if beginIdx >= len(target) {
+			break
 		}
-		target = target[cnt:]
-	}
-	if len(target) <= 0 {
-		return nil
+
+		endIdx := beginIdx + batchSize
+		if endIdx > len(target) {
+			endIdx = len(target)
+		}
+
+		if err := f(target[beginIdx:endIdx]); err != nil {
+			errs = append(errs, err)
+		}
+		beginIdx = endIdx
 	}
 
-	klog.Infof("batch process ,total length %d last section", len(target))
-	return batch(target)
+	return utilerrors.NewAggregate(errs)
 }

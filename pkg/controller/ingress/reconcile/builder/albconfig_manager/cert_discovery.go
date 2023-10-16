@@ -7,14 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"k8s.io/cloud-provider-alibaba-cloud/pkg/util"
-
 	"k8s.io/apimachinery/pkg/util/cache"
 	"k8s.io/apimachinery/pkg/util/sets"
 	prvd "k8s.io/cloud-provider-alibaba-cloud/pkg/provider"
 
-	"github.com/aliyun/alibaba-cloud-sdk-go/sdk/requests"
-	cassdk "github.com/aliyun/alibaba-cloud-sdk-go/services/cas"
 	"github.com/go-logr/logr"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -99,7 +95,7 @@ const (
 	DescribeSSLCertificatePublicKeyDetail = "DescribeSSLCertificatePublicKeyDetail"
 )
 
-func (d *casCertDiscovery) loadDomainsForAllCertificates(ctx context.Context) (map[string]sets.String, error) {
+func (d *casCertDiscovery) loadDomainsForAllCertificates(ctx context.Context) (map[string]sets.Set[string], error) {
 	d.loadDomainsByCertIDMutex.Lock()
 	defer d.loadDomainsByCertIDMutex.Unlock()
 
@@ -108,7 +104,7 @@ func (d *casCertDiscovery) loadDomainsForAllCertificates(ctx context.Context) (m
 		klog.Errorf("loadAllCertificateIDs error: %v", err)
 		return nil, err
 	}
-	domainsByCertID := make(map[string]sets.String, len(certIDs))
+	domainsByCertID := make(map[string]sets.Set[string], len(certIDs))
 	for _, certID := range certIDs {
 		certDomains, err := d.loadDomainsForCertificate(ctx, certID)
 		if err != nil {
@@ -121,50 +117,19 @@ func (d *casCertDiscovery) loadDomainsForAllCertificates(ctx context.Context) (m
 }
 
 func (d *casCertDiscovery) loadAllCertificateIDs(ctx context.Context) ([]string, error) {
-	traceID := ctx.Value(util.TraceID)
 
 	if rawCacheItem, ok := d.certIDsCache.Get(certIdentifierCacheKey); ok {
 		return rawCacheItem.([]string), nil
 	}
 
-	req := cassdk.CreateDescribeSSLCertificateListRequest()
-	req.SetVersion(CASVersion)
-	req.Domain = CASDomain
-	req.ShowSize = requests.NewInteger(CASShowSize)
-
-	certificateInfos := make([]cassdk.CertificateInfo, 0)
-	pageNumber := 1
-	for {
-		req.CurrentPage = requests.NewInteger(pageNumber)
-
-		startTime := time.Now()
-		d.logger.Info("listing ssl certificate",
-			"traceID", traceID,
-			"startTime", startTime,
-			"action", DescribeSSLCertificateList)
-		resp, err := d.cloud.DescribeSSLCertificateList(ctx, req)
-		if err != nil {
-			klog.Errorf("DescribeUserCertificateList error: %v", err)
-			return nil, err
-		}
-		d.logger.Info("listed ssl certificate",
-			"traceID", traceID,
-			"certMetaList", resp.CertMetaList,
-			"elapsedTime", time.Since(startTime).Milliseconds(),
-			"requestID", resp.RequestId,
-			"action", DescribeSSLCertificateList)
-
-		certificateInfos = append(certificateInfos, resp.CertMetaList...)
-
-		if pageNumber < resp.PageCount {
-			pageNumber++
-		} else {
-			break
-		}
+	certs, err := d.cloud.DescribeSSLCertificateList(ctx)
+	if err != nil {
+		klog.Errorf("loadAllCertificates error: %v", err)
+		return nil, err
 	}
 
 	var certIDs []string
-	for _, certSummary := range certificateInfos {
+	for _, certSummary := range certs {
 		certIDs = append(certIDs, certSummary.CertIdentifier)
 	}
 
@@ -173,37 +138,19 @@ func (d *casCertDiscovery) loadAllCertificateIDs(ctx context.Context) ([]string,
 	return certIDs, nil
 }
 
-func (d *casCertDiscovery) loadDomainsForCertificate(ctx context.Context, certID string) (sets.String, error) {
-	traceID := ctx.Value(util.TraceID)
+func (d *casCertDiscovery) loadDomainsForCertificate(ctx context.Context, certID string) (sets.Set[string], error) {
 
 	if rawCacheItem, ok := d.certDomainsCache.Get(certID); ok {
-		return rawCacheItem.(sets.String), nil
+		return rawCacheItem.(sets.Set[string]), nil
 	}
-	req := cassdk.CreateDescribeSSLCertificatePublicKeyDetailRequest()
-	req.CertIdentifier = certID
-	req.SetVersion(CASVersion)
-	req.Domain = CASDomain
 
-	startTime := time.Now()
-	d.logger.Info("getting ssl certificate",
-		"traceID", traceID,
-		"certID", certID,
-		"startTime", startTime,
-		"action", DescribeSSLCertificatePublicKeyDetail)
-	resp, err := d.cloud.DescribeSSLCertificatePublicKeyDetail(ctx, req)
+	resp, err := d.cloud.DescribeSSLCertificatePublicKeyDetail(ctx, certID)
 	if err != nil {
 		klog.Errorf("DescribeUserCertificateDetail error: %v", err)
 		return nil, err
 	}
-	d.logger.Info("got ssl certificate",
-		"traceID", traceID,
-		"certID", certID,
-		"elapsedTime", time.Since(startTime).Milliseconds(),
-		"certificateInfo", resp.CertificateInfo,
-		"requestID", resp.RequestId,
-		"action", DescribeSSLCertificatePublicKeyDetail)
 
-	domains := sets.NewString(resp.CertificateInfo.CommonName, resp.CertificateInfo.Sans)
+	domains := sets.New(resp.CommonName, resp.Sans)
 	d.certDomainsCache.Set(certID, domains, d.importedCertDomainsCacheTTL)
 
 	return domains, nil
