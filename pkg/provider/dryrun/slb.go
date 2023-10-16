@@ -11,7 +11,6 @@ import (
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/provider/alibaba/base"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/provider/alibaba/slb"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/util"
-	"k8s.io/klog/v2"
 )
 
 func NewDryRunSLB(
@@ -107,7 +106,7 @@ func (m *DryRunSLB) DescribeLoadBalancerListeners(ctx context.Context, lbId stri
 	return m.slb.DescribeLoadBalancerListeners(ctx, lbId)
 }
 
-func (m *DryRunSLB) StartLoadBalancerListener(ctx context.Context, lbId string, port int) error {
+func (m *DryRunSLB) StartLoadBalancerListener(ctx context.Context, lbId string, port int, proto string) error {
 	mtype := "StartLoadBalancerListener"
 	svc := getService(ctx)
 	AddEvent(SLB, fmt.Sprintf("%s/%d", util.Key(svc), port), lbId, "StartListener",
@@ -115,7 +114,7 @@ func (m *DryRunSLB) StartLoadBalancerListener(ctx context.Context, lbId string, 
 	return hintError(mtype, fmt.Sprintf("loadbalancer %s listener %d should be running", lbId, port))
 }
 
-func (m *DryRunSLB) StopLoadBalancerListener(ctx context.Context, lbId string, port int) error {
+func (m *DryRunSLB) StopLoadBalancerListener(ctx context.Context, lbId string, port int, proto string) error {
 	mtype := "StopLoadBalancerListener"
 	svc := getService(ctx)
 	AddEvent(SLB, fmt.Sprintf("%s/%d", util.Key(svc), port), lbId, "StopListener",
@@ -123,7 +122,7 @@ func (m *DryRunSLB) StopLoadBalancerListener(ctx context.Context, lbId string, p
 	return hintError(mtype, fmt.Sprintf("loadbalancer %s listener %d should be stopped", lbId, port))
 }
 
-func (m *DryRunSLB) DeleteLoadBalancerListener(ctx context.Context, lbId string, port int) error {
+func (m *DryRunSLB) DeleteLoadBalancerListener(ctx context.Context, lbId string, port int, proto string) error {
 	mtype := "DeleteLoadBalancerListener"
 	svc := getService(ctx)
 	AddEvent(SLB, fmt.Sprintf("%s/%d", util.Key(svc), port), lbId, "DeleteListener", ERROR, "")
@@ -211,13 +210,12 @@ func (m *DryRunSLB) DescribeVServerGroups(ctx context.Context, lbId string) ([]m
 	return m.slb.DescribeVServerGroups(ctx, lbId)
 }
 
-/*
-From v1.9.3.313-g748f81e-aliyun, ccm sets backend type to eni in newly created Terway clusters.
-*/
 func (m *DryRunSLB) CreateVServerGroup(ctx context.Context, vg *model.VServerGroup, lbId string) error {
 	mtype := "CreateVServerGroup"
-	klog.Warningf("%s try to call %s function, lb id: %s", vg.VGroupName, mtype, lbId)
-	return m.slb.CreateVServerGroup(ctx, vg, lbId)
+	svc := getService(ctx)
+	AddEvent(SLB, fmt.Sprintf("%s/%s", util.Key(svc), vg.VGroupName), lbId,
+		"CreateVgroup", ERROR, "")
+	return hintError(mtype, fmt.Sprintf("loadbalancer %s vgroup %s should be created", lbId, vg.VGroupName))
 }
 
 func (m *DryRunSLB) DescribeVServerGroupAttribute(ctx context.Context, vGroupId string) (model.VServerGroup, error) {
@@ -233,16 +231,14 @@ func (m *DryRunSLB) DeleteVServerGroup(ctx context.Context, vGroupId string) err
 	return hintError(mtype, fmt.Sprintf("loadbalancer %s vgroup %s should be deleted", lbId, vGroupId))
 }
 
-/*
-From v1.9.3.239-g40d97e1-aliyun, ccm support ecs and eni together.
-If a svc who has ecs and eni backends together, it's normal to call the AddVServerGroupBackendServers api to add eci backend.
-*/
 func (m *DryRunSLB) AddVServerGroupBackendServers(ctx context.Context, vGroupId string, backends string) error {
 	mtype := "AddVServerGroupBackendServers"
 	svc := getService(ctx)
 	lbId := getSlb(ctx)
-	klog.Warningf("%s try to call %s function, vgroup id: %s, lb id: %s", util.Key(svc), mtype, vGroupId, lbId)
-	return m.slb.AddVServerGroupBackendServers(ctx, vGroupId, backends)
+	AddEvent(SLB, fmt.Sprintf("%s/%s", util.Key(svc), vGroupId), lbId,
+		"AddVServerGroupBackendServers", ERROR, "")
+	return hintError(mtype, fmt.Sprintf("loadbalancer %s vgroup %s backends %s should be added",
+		lbId, vGroupId, backends))
 }
 
 func (m *DryRunSLB) RemoveVServerGroupBackendServers(ctx context.Context, vGroupId string, backends string) error {
@@ -267,6 +263,10 @@ func (m *DryRunSLB) ModifyVServerGroupBackendServers(ctx context.Context, vGroup
 	AddEvent(SLB, fmt.Sprintf("%s/VGroupID/%s", util.Key(svc), vGroupId), lbId,
 		"ModifyVgroup", ERROR, "")
 	return hintError(mtype, fmt.Sprintf("loadbalancer %s vgroup %s backends should be %s", lbId, vGroupId, new))
+}
+
+func (m *DryRunSLB) DescribeServerCertificateById(ctx context.Context, serverCertificateId string) (*model.CertAttribute, error) {
+	return m.slb.DescribeServerCertificateById(ctx, serverCertificateId)
 }
 
 func getService(ctx context.Context) *v1.Service {

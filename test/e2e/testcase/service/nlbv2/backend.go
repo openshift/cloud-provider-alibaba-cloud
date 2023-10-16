@@ -6,7 +6,7 @@ import (
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/controller/service/reconcile/annotation"
 	"time"
 
-	"github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -19,8 +19,8 @@ import (
 func RunBackendTestCases(f *framework.Framework) {
 
 	ginkgo.Describe("nlb service controller: backend", func() {
-		ginkgo.By("delete service")
 		ginkgo.AfterEach(func() {
+			ginkgo.By("delete service")
 			err := f.AfterEach()
 			gomega.Expect(err).To(gomega.BeNil())
 		})
@@ -621,6 +621,33 @@ func RunBackendTestCases(f *framework.Framework) {
 					annotation.Annotation(annotation.OverrideListener): "true",
 				})
 				gomega.Expect(err).To(gomega.BeNil())
+				err = f.ExpectNetworkLoadBalancerEqual(oldSvc)
+				gomega.Expect(err).To(gomega.BeNil())
+			})
+		})
+
+		ginkgo.Context("update-backend", func() {
+			ginkgo.It("scale deploy", func() {
+				rawsvc := f.Client.KubeClient.DefaultNLBService()
+				rawsvc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyTypeLocal
+				rawsvc.Annotations = map[string]string{
+					annotation.Annotation(annotation.ZoneMaps):         options.TestConfig.NLBZoneMaps,
+					annotation.Annotation(annotation.LoadBalancerId):   options.TestConfig.InternetNetworkLoadBalancerID,
+					annotation.Annotation(annotation.OverrideListener): "true",
+				}
+				oldSvc, err := f.Client.KubeClient.CreateService(rawsvc)
+				gomega.Expect(err).To(gomega.BeNil())
+				err = f.ExpectNetworkLoadBalancerEqual(oldSvc)
+				gomega.Expect(err).To(gomega.BeNil())
+
+				// scale deploy
+				err = f.Client.KubeClient.ScaleDeployment(1)
+				gomega.Expect(err).To(gomega.BeNil())
+				defer func() {
+					err = f.Client.KubeClient.ScaleDeployment(3)
+					gomega.Expect(err).To(gomega.BeNil())
+				}()
+
 				err = f.ExpectNetworkLoadBalancerEqual(oldSvc)
 				gomega.Expect(err).To(gomega.BeNil())
 			})

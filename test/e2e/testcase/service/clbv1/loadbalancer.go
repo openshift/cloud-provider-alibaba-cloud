@@ -2,7 +2,7 @@ package clbv1
 
 import (
 	"context"
-	"github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/controller/helper"
@@ -16,8 +16,8 @@ func RunLoadBalancerTestCases(f *framework.Framework) {
 
 	ginkgo.Describe("clb service controller: loadbalancer", func() {
 
-		ginkgo.By("delete service")
 		ginkgo.AfterEach(func() {
+			ginkgo.By("delete service")
 			err := f.AfterEach()
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		})
@@ -888,6 +888,21 @@ func RunLoadBalancerTestCases(f *framework.Framework) {
 				gomega.Expect(err).NotTo(gomega.BeNil())
 			})
 		})
+
+		if options.TestConfig.Address != "" {
+			ginkgo.Context("loadbalancer address", func() {
+				ginkgo.It("loadbalancer address", func() {
+					svc, err := f.Client.KubeClient.CreateServiceByAnno(map[string]string{
+						annotation.Annotation(annotation.AddressType): string(model.IntranetAddressType),
+						annotation.Annotation(annotation.VswitchId):   options.TestConfig.VSwitchID,
+						annotation.Annotation(annotation.IP):          options.TestConfig.Address,
+					})
+					gomega.Expect(err).To(gomega.BeNil())
+					err = f.ExpectLoadBalancerEqual(svc)
+					gomega.Expect(err).To(gomega.BeNil())
+				})
+			})
+		}
 	})
 
 }

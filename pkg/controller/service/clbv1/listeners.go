@@ -3,10 +3,12 @@ package clbv1
 import (
 	"context"
 	"fmt"
+	"github.com/alibabacloud-go/tea/tea"
 	"github.com/mohae/deepcopy"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/controller/helper"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/controller/service/reconcile/annotation"
 	svcCtx "k8s.io/cloud-provider-alibaba-cloud/pkg/controller/service/reconcile/context"
+	"time"
 
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/provider/dryrun"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/util"
@@ -74,7 +76,7 @@ func (mgr *ListenerManager) Create(reqCtx *svcCtx.RequestContext, action CreateA
 
 func (mgr *ListenerManager) Delete(reqCtx *svcCtx.RequestContext, action DeleteAction) error {
 	reqCtx.Log.Info(fmt.Sprintf("delete listener %d", action.listener.ListenerPort))
-	return mgr.cloud.DeleteLoadBalancerListener(reqCtx.Ctx, action.lbId, action.listener.ListenerPort)
+	return mgr.cloud.DeleteLoadBalancerListener(reqCtx.Ctx, action.lbId, action.listener.ListenerPort, action.listener.Protocol)
 }
 
 func (mgr *ListenerManager) Update(reqCtx *svcCtx.RequestContext, action UpdateAction) error {
@@ -178,13 +180,19 @@ func (mgr *ListenerManager) buildListenerFromServicePort(reqCtx *svcCtx.RequestC
 		listener.EnableHttp2 = model.FlagType(reqCtx.Anno.Get(annotation.EnableHttp2))
 	}
 
+	if reqCtx.Anno.Get(annotation.ProxyProtocol) != "" {
+		listener.EnableProxyProtocolV2 = tea.Bool(reqCtx.Anno.Get(annotation.ProxyProtocol) == string(model.OnFlag))
+	}
+
 	if reqCtx.Anno.Get(annotation.ForwardPort) != "" && listener.Protocol == model.HTTP {
-		forwardPort, err := forwardPort(reqCtx.Anno.Get(annotation.ForwardPort), int(port.Port))
+		fp, err := forwardPort(reqCtx.Anno.Get(annotation.ForwardPort), int(port.Port))
 		if err != nil {
 			return listener, fmt.Errorf("Annotation ForwardPort error: %s ", err.Error())
 		}
-		listener.ForwardPort = forwardPort
-		listener.ListenerForward = model.OnFlag
+		if fp != 0 {
+			listener.ForwardPort = fp
+			listener.ListenerForward = model.OnFlag
+		}
 	}
 
 	if reqCtx.Anno.Get(annotation.IdleTimeout) != "" {
@@ -321,6 +329,10 @@ func (mgr *ListenerManager) buildListenerFromServicePort(reqCtx *svcCtx.RequestC
 		listener.HealthCheckMethod = reqCtx.Anno.Get(annotation.HealthCheckMethod)
 	}
 
+	if reqCtx.Anno.Get(annotation.HealthCheckSwitch) != "" {
+		listener.HealthCheckSwitch = model.FlagType(reqCtx.Anno.Get(annotation.HealthCheckSwitch))
+	}
+
 	return listener, nil
 }
 
@@ -335,12 +347,12 @@ func (t *tcp) Create(reqCtx *svcCtx.RequestContext, action CreateAction) error {
 		return fmt.Errorf("create tcp listener %d error: %s", action.listener.ListenerPort, err.Error())
 	}
 	reqCtx.Log.Info(fmt.Sprintf("create listener tcp [%d]", action.listener.ListenerPort))
-	return t.mgr.cloud.StartLoadBalancerListener(reqCtx.Ctx, action.lbId, action.listener.ListenerPort)
+	return t.mgr.cloud.StartLoadBalancerListener(reqCtx.Ctx, action.lbId, action.listener.ListenerPort, action.listener.Protocol)
 }
 
 func (t *tcp) Update(reqCtx *svcCtx.RequestContext, action UpdateAction) error {
 	if action.remote.Status == model.Stopped {
-		err := t.mgr.cloud.StartLoadBalancerListener(reqCtx.Ctx, action.lbId, action.local.ListenerPort)
+		err := t.mgr.cloud.StartLoadBalancerListener(reqCtx.Ctx, action.lbId, action.local.ListenerPort, action.local.Protocol)
 		if err != nil {
 			return fmt.Errorf("start tcp listener %d error: %s", action.local.ListenerPort, err.Error())
 		}
@@ -364,12 +376,12 @@ func (t *udp) Create(reqCtx *svcCtx.RequestContext, action CreateAction) error {
 		return fmt.Errorf("create udp listener %d error: %s", action.listener.ListenerPort, err.Error())
 	}
 	reqCtx.Log.Info(fmt.Sprintf("create listener udp [%d]", action.listener.ListenerPort))
-	return t.mgr.cloud.StartLoadBalancerListener(reqCtx.Ctx, action.lbId, action.listener.ListenerPort)
+	return t.mgr.cloud.StartLoadBalancerListener(reqCtx.Ctx, action.lbId, action.listener.ListenerPort, action.listener.Protocol)
 }
 
 func (t *udp) Update(reqCtx *svcCtx.RequestContext, action UpdateAction) error {
 	if action.remote.Status == model.Stopped {
-		err := t.mgr.cloud.StartLoadBalancerListener(reqCtx.Ctx, action.lbId, action.local.ListenerPort)
+		err := t.mgr.cloud.StartLoadBalancerListener(reqCtx.Ctx, action.lbId, action.local.ListenerPort, action.local.Protocol)
 		if err != nil {
 			return fmt.Errorf("start udp listener %d error: %s", action.local.ListenerPort, err.Error())
 		}
@@ -393,13 +405,13 @@ func (t *http) Create(reqCtx *svcCtx.RequestContext, action CreateAction) error 
 		return fmt.Errorf("create http listener %d error: %s", action.listener.ListenerPort, err.Error())
 	}
 	reqCtx.Log.Info(fmt.Sprintf("create listener http [%d]", action.listener.ListenerPort))
-	return t.mgr.cloud.StartLoadBalancerListener(reqCtx.Ctx, action.lbId, action.listener.ListenerPort)
+	return t.mgr.cloud.StartLoadBalancerListener(reqCtx.Ctx, action.lbId, action.listener.ListenerPort, action.listener.Protocol)
 
 }
 
 func (t *http) Update(reqCtx *svcCtx.RequestContext, action UpdateAction) error {
 	if action.remote.Status == model.Stopped {
-		err := t.mgr.cloud.StartLoadBalancerListener(reqCtx.Ctx, action.lbId, action.local.ListenerPort)
+		err := t.mgr.cloud.StartLoadBalancerListener(reqCtx.Ctx, action.lbId, action.local.ListenerPort, action.local.Protocol)
 		if err != nil {
 			return fmt.Errorf("start http listener %d error: %s", action.local.ListenerPort, err.Error())
 		}
@@ -460,13 +472,13 @@ func (t *https) Create(reqCtx *svcCtx.RequestContext, action CreateAction) error
 		return fmt.Errorf("create https listener %d error: %s", action.listener.ListenerPort, err.Error())
 	}
 	reqCtx.Log.Info(fmt.Sprintf("create listener https [%d]", action.listener.ListenerPort))
-	return t.mgr.cloud.StartLoadBalancerListener(reqCtx.Ctx, action.lbId, action.listener.ListenerPort)
+	return t.mgr.cloud.StartLoadBalancerListener(reqCtx.Ctx, action.lbId, action.listener.ListenerPort, action.listener.Protocol)
 
 }
 
 func (t *https) Update(reqCtx *svcCtx.RequestContext, action UpdateAction) error {
 	if action.remote.Status == model.Stopped {
-		err := t.mgr.cloud.StartLoadBalancerListener(reqCtx.Ctx, action.lbId, action.local.ListenerPort)
+		err := t.mgr.cloud.StartLoadBalancerListener(reqCtx.Ctx, action.lbId, action.local.ListenerPort, action.local.Protocol)
 		if err != nil {
 			return fmt.Errorf("start https listener %d error: %s", action.local.ListenerPort, err.Error())
 		}
@@ -476,6 +488,14 @@ func (t *https) Update(reqCtx *svcCtx.RequestContext, action UpdateAction) error
 		reqCtx.Log.Info(fmt.Sprintf("update listener: https [%d] did not change, skip", action.local.ListenerPort))
 		return nil
 	}
+
+	if action.local.CertId != action.remote.CertId {
+		err := checkCertValidity(t.mgr.cloud, action.remote.CertId, action.local.CertId)
+		if err != nil {
+			return err
+		}
+	}
+
 	return t.mgr.cloud.SetLoadBalancerHTTPSListenerAttribute(reqCtx.Ctx, action.lbId, update)
 }
 
@@ -490,7 +510,7 @@ func forwardPort(port string, target int) (int, error) {
 		if len(ports) != 2 {
 			return 0, fmt.Errorf("forward port format error: %s, expect 80:443,88:6443", port)
 		}
-		if ports[0] == strconv.Itoa(int(target)) {
+		if ports[0] == strconv.Itoa(target) {
 			forwarded = ports[1]
 			break
 		}
@@ -503,7 +523,7 @@ func forwardPort(port string, target int) (int, error) {
 		klog.Infof("forward http port %d to %d", target, forward)
 		return forward, nil
 	}
-	return 0, fmt.Errorf("forward port format error: %s, expect 80:443,88:6443", port)
+	return 0, nil
 }
 
 func buildActionsForListeners(reqCtx *svcCtx.RequestContext, local *model.LoadBalancer, remote *model.LoadBalancer) ([]CreateAction, []UpdateAction, []DeleteAction, error) {
@@ -522,29 +542,19 @@ func buildActionsForListeners(reqCtx *svcCtx.RequestContext, local *model.LoadBa
 		}
 	}
 
-	// For updations and deletions
+	// For update and deletions
 	for _, rlis := range remote.Listeners {
 		found := false
 		for _, llis := range local.Listeners {
-			if rlis.ListenerPort == llis.ListenerPort {
+			if rlis.ListenerPort == llis.ListenerPort && rlis.Protocol == llis.Protocol {
 				found = true
-				// protocol match, do update
-				if rlis.Protocol == llis.Protocol {
-					updateActions = append(updateActions,
-						UpdateAction{
-							lbId:   remote.LoadBalancerAttribute.LoadBalancerId,
-							local:  llis,
-							remote: rlis,
-						})
-				} else {
-					// protocol not match, need to recreate
-					deleteActions = append(deleteActions,
-						DeleteAction{
-							lbId:     remote.LoadBalancerAttribute.LoadBalancerId,
-							listener: rlis,
-						})
-					reqCtx.Log.Info(fmt.Sprintf("update listener: port [%d] match while protocol not, need recreate", llis.ListenerPort))
-				}
+				// listener and protocol match, do update
+				updateActions = append(updateActions,
+					UpdateAction{
+						lbId:   remote.LoadBalancerAttribute.LoadBalancerId,
+						local:  llis,
+						remote: rlis,
+					})
 			}
 		}
 		// Do not delete any listener that no longer managed by my service
@@ -566,13 +576,8 @@ func buildActionsForListeners(reqCtx *svcCtx.RequestContext, local *model.LoadBa
 	for _, llis := range local.Listeners {
 		found := false
 		for _, rlis := range remote.Listeners {
-			if llis.ListenerPort == rlis.ListenerPort {
-				// port match
-				if llis.Protocol != rlis.Protocol {
-					// protocol does not match, do add listener
-					break
-				}
-				// port matched. updated. skip
+			if llis.ListenerPort == rlis.ListenerPort && llis.Protocol == rlis.Protocol {
+				// port and protocol matched. updated. skip
 				found = true
 			}
 		}
@@ -714,6 +719,14 @@ func isNeedUpdate(reqCtx *svcCtx.RequestContext, local model.ListenerAttribute, 
 		updateDetail += fmt.Sprintf("EstablishedTimeout changed: %v - %v ;",
 			remote.EstablishedTimeout, local.EstablishedTimeout)
 	}
+	if (local.Protocol == model.TCP || local.Protocol == model.UDP) &&
+		local.EnableProxyProtocolV2 != nil &&
+		tea.BoolValue(local.EnableProxyProtocolV2) != tea.BoolValue(remote.EnableProxyProtocolV2) {
+		needUpdate = true
+		update.EnableProxyProtocolV2 = tea.Bool(*local.EnableProxyProtocolV2)
+		updateDetail += fmt.Sprintf("lb EnableProxyProtocolV2 %v should be changed to %v",
+			tea.BoolValue(remote.EnableProxyProtocolV2), tea.BoolValue(local.EnableProxyProtocolV2))
+	}
 
 	// only for https
 	if local.Protocol == model.HTTPS {
@@ -836,7 +849,7 @@ func isNeedUpdate(reqCtx *svcCtx.RequestContext, local model.ListenerAttribute, 
 			remote.ConnectionDrainTimeout, local.ConnectionDrainTimeout)
 	}
 
-	//x-forwarded-for
+	// x-forwarded-for
 	if helper.Is7LayerProtocol(local.Protocol) &&
 		local.XForwardedForProto != "" &&
 		remote.XForwardedForProto != local.XForwardedForProto {
@@ -915,6 +928,14 @@ func isNeedUpdate(reqCtx *svcCtx.RequestContext, local model.ListenerAttribute, 
 		updateDetail += fmt.Sprintf("lb HealthCheckConnectTimeout %v should be changed to %v;",
 			remote.HealthCheckConnectTimeout, local.HealthCheckConnectTimeout)
 	}
+	if helper.Is4LayerProtocol(local.Protocol) &&
+		local.HealthCheckSwitch != "" &&
+		remote.HealthCheckSwitch != local.HealthCheckSwitch {
+		needUpdate = true
+		update.HealthCheckSwitch = local.HealthCheckSwitch
+		updateDetail += fmt.Sprintf("lb HealthCheckSwitch %v should be changed to %v;",
+			remote.HealthCheckSwitch, local.HealthCheckSwitch)
+	}
 	if helper.Is7LayerProtocol(local.Protocol) &&
 		local.HealthCheck != "" &&
 		remote.HealthCheck != local.HealthCheck {
@@ -967,4 +988,30 @@ func isPortManagedByMyService(local *model.LoadBalancer, n model.ListenerAttribu
 	return n.NamedKey.ServiceName == local.NamespacedName.Name &&
 		n.NamedKey.Namespace == local.NamespacedName.Namespace &&
 		n.NamedKey.CID == base.CLUSTER_ID
+}
+
+func checkCertValidity(cloudClient prvd.Provider, oldCertId, newCertId string) error {
+	oldCert, err := cloudClient.DescribeServerCertificateById(context.TODO(), oldCertId)
+	if err != nil {
+		return fmt.Errorf("describe old cert %s error: %s", oldCertId, err.Error())
+	}
+
+	newCert, err := cloudClient.DescribeServerCertificateById(context.TODO(), newCertId)
+	if err != nil {
+		return fmt.Errorf("describe new cert %s error: %s", newCertId, err.Error())
+	}
+
+	if oldCert == nil {
+		return nil
+	}
+
+	if newCert == nil {
+		return fmt.Errorf("can not found cert by id %s", newCertId)
+	}
+
+	if newCert.ExpireTimeStamp < time.Now().UnixMilli() {
+		return fmt.Errorf("can not update cert %s because it is expired", newCertId)
+	}
+
+	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"github.com/alibabacloud-go/tea/tea"
 	"github.com/mohae/deepcopy"
 	v1 "k8s.io/api/core/v1"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	ctrlCfg "k8s.io/cloud-provider-alibaba-cloud/pkg/config"
@@ -247,22 +248,28 @@ func (mgr *ServerGroupManager) updateServerGroupServers(reqCtx *svcCtx.RequestCo
 		return nil
 	}
 
+	reqCtx.Log.Info(fmt.Sprintf("reconcile sg: [%s] changed, local: [%s], remote: [%s]",
+		remote.ResourceGroupId, local.BackendInfo(), remote.BackendInfo()), "sgName", remote.ServerGroupName)
+
+	var errs []error
+
 	if len(add) > 0 {
 		if err := mgr.BatchAddServers(reqCtx, local, add); err != nil {
-			return err
+			errs = append(errs, err)
 		}
 	}
 	if len(del) > 0 {
 		if err := mgr.BatchRemoveServers(reqCtx, remote, del); err != nil {
-			return err
+			errs = append(errs, err)
 		}
 	}
 	if len(update) > 0 {
 		if err := mgr.BatchUpdateServers(reqCtx, remote, update); err != nil {
-			return err
+			errs = append(errs, err)
 		}
 	}
-	return nil
+
+	return utilerrors.NewAggregate(errs)
 }
 
 func (mgr *ServerGroupManager) BatchAddServers(reqCtx *svcCtx.RequestContext, sg *nlbmodel.ServerGroup,
@@ -514,6 +521,7 @@ func (mgr *ServerGroupManager) buildLocalBackends(reqCtx *svcCtx.RequestContext,
 				"expected: ${regionid}.${nodeid}, %s", node.Spec.ProviderID, err.Error())
 		}
 		backend.ServerId = id
+		backend.ServerIp = ""
 		backend.ServerType = nlbmodel.EcsServerType
 		// for ECS backend type, port should be set to NodePort
 		backend.Port = sg.ServicePort.NodePort
@@ -686,6 +694,10 @@ func podNumberAlgorithm(mode helper.TrafficPolicy, backends []nlbmodel.ServerGro
 */
 func podPercentAlgorithm(mode helper.TrafficPolicy, backends []nlbmodel.ServerGroupServer, weight int,
 ) []nlbmodel.ServerGroupServer {
+	if len(backends) == 0 {
+		return backends
+	}
+
 	if weight == 0 {
 		for i := range backends {
 			backends[i].Weight = 0

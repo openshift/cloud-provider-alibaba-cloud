@@ -1,7 +1,7 @@
 package nlbv2
 
 import (
-	"github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -15,8 +15,8 @@ import (
 func RunListenerTestCases(f *framework.Framework) {
 	ginkgo.Describe("nlb service controller: listener", func() {
 
-		ginkgo.By("delete service")
 		ginkgo.AfterEach(func() {
+			ginkgo.By("delete service")
 			err := f.AfterEach()
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		})
@@ -178,6 +178,50 @@ func RunListenerTestCases(f *framework.Framework) {
 						Port:       443,
 						TargetPort: intstr.FromInt(80),
 						Protocol:   v1.ProtocolUDP,
+					},
+				}
+				lbClass := helper.NLBClass
+				oldsvc.Spec.LoadBalancerClass = &lbClass
+
+				oldsvc, err := f.Client.KubeClient.CreateService(oldsvc)
+				gomega.Expect(err).To(gomega.BeNil())
+				err = f.ExpectNetworkLoadBalancerEqual(oldsvc)
+				gomega.Expect(err).To(gomega.BeNil())
+
+				newsvc := oldsvc.DeepCopy()
+				newsvc.Spec.Ports = []v1.ServicePort{
+					{
+						Name:       "http",
+						Port:       80,
+						TargetPort: intstr.FromInt(80),
+						Protocol:   v1.ProtocolTCP,
+					},
+				}
+				newsvc, err = f.Client.KubeClient.PatchService(oldsvc, newsvc)
+				gomega.Expect(err).To(gomega.BeNil())
+				err = f.ExpectNetworkLoadBalancerEqual(newsvc)
+				gomega.Expect(err).To(gomega.BeNil())
+			})
+
+			ginkgo.It("port: 80; mixed protocol: udp & tcp", func() {
+				oldsvc := f.Client.KubeClient.DefaultService()
+				oldsvc.Annotations = map[string]string{
+					annotation.Annotation(annotation.ZoneMaps):         options.TestConfig.NLBZoneMaps,
+					annotation.Annotation(annotation.LoadBalancerId):   options.TestConfig.InternetNetworkLoadBalancerID,
+					annotation.Annotation(annotation.OverrideListener): "true",
+				}
+				oldsvc.Spec.Ports = []v1.ServicePort{
+					{
+						Name:       "tcp",
+						Port:       80,
+						TargetPort: intstr.FromInt(80),
+						Protocol:   v1.ProtocolUDP,
+					},
+					{
+						Name:       "udp",
+						Port:       80,
+						TargetPort: intstr.FromInt(80),
+						Protocol:   v1.ProtocolTCP,
 					},
 				}
 				lbClass := helper.NLBClass
