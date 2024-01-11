@@ -3,7 +3,7 @@ package clbv1
 import (
 	"context"
 	v1 "k8s.io/api/core/v1"
-	discovery "k8s.io/api/discovery/v1beta1"
+	discovery "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -201,9 +201,7 @@ func getFakeKubeClient() client.Client {
 				Conditions: discovery.EndpointConditions{
 					Ready: &epReady,
 				},
-				Topology: map[string]string{
-					v1.LabelHostname: NodeName,
-				},
+				NodeName: &NodeName,
 			},
 		},
 		Ports: []discovery.EndpointPort{
@@ -255,10 +253,11 @@ func getDefaultService() *v1.Service {
 
 func getReqCtx(svc *v1.Service) *svcCtx.RequestContext {
 	return &svcCtx.RequestContext{
-		Ctx:     context.TODO(),
-		Service: svc,
-		Anno:    annotation.NewAnnotationRequest(svc),
-		Log:     util.ServiceLog.WithValues("service", util.Key(svc)),
+		Ctx:      context.TODO(),
+		Service:  svc,
+		Anno:     annotation.NewAnnotationRequest(svc),
+		Log:      util.ServiceLog.WithValues("service", util.Key(svc)),
+		Recorder: record.NewFakeRecorder(100),
 	}
 }
 

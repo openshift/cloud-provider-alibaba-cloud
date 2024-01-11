@@ -51,7 +51,7 @@ func NewRevive(settings *config.ReviveSettings) *goanalysis.Linter {
 		[]*analysis.Analyzer{analyzer},
 		nil,
 	).WithContextSetter(func(lintCtx *linter.Context) {
-		analyzer.Run = func(pass *analysis.Pass) (interface{}, error) {
+		analyzer.Run = func(pass *analysis.Pass) (any, error) {
 			issues, err := runRevive(lintCtx, pass, settings)
 			if err != nil {
 				return nil, err
@@ -187,8 +187,8 @@ func getReviveConfig(cfg *config.ReviveSettings) (*lint.Config, error) {
 	return conf, nil
 }
 
-func createConfigMap(cfg *config.ReviveSettings) map[string]interface{} {
-	rawRoot := map[string]interface{}{
+func createConfigMap(cfg *config.ReviveSettings) map[string]any {
+	rawRoot := map[string]any{
 		"ignoreGeneratedHeader": cfg.IgnoreGeneratedHeader,
 		"confidence":            cfg.Confidence,
 		"severity":              cfg.Severity,
@@ -197,9 +197,9 @@ func createConfigMap(cfg *config.ReviveSettings) map[string]interface{} {
 		"enableAllRules":        cfg.EnableAllRules,
 	}
 
-	rawDirectives := map[string]map[string]interface{}{}
+	rawDirectives := map[string]map[string]any{}
 	for _, directive := range cfg.Directives {
-		rawDirectives[directive.Name] = map[string]interface{}{
+		rawDirectives[directive.Name] = map[string]any{
 			"severity": directive.Severity,
 		}
 	}
@@ -208,9 +208,9 @@ func createConfigMap(cfg *config.ReviveSettings) map[string]interface{} {
 		rawRoot["directive"] = rawDirectives
 	}
 
-	rawRules := map[string]map[string]interface{}{}
+	rawRules := map[string]map[string]any{}
 	for _, s := range cfg.Rules {
-		rawRules[s.Name] = map[string]interface{}{
+		rawRules[s.Name] = map[string]any{
 			"severity":  s.Severity,
 			"arguments": safeTomlSlice(s.Arguments),
 			"disabled":  s.Disabled,
@@ -224,19 +224,19 @@ func createConfigMap(cfg *config.ReviveSettings) map[string]interface{} {
 	return rawRoot
 }
 
-func safeTomlSlice(r []interface{}) []interface{} {
+func safeTomlSlice(r []any) []any {
 	if len(r) == 0 {
 		return nil
 	}
 
-	if _, ok := r[0].(map[interface{}]interface{}); !ok {
+	if _, ok := r[0].(map[any]any); !ok {
 		return r
 	}
 
-	var typed []interface{}
+	var typed []any
 	for _, elt := range r {
-		item := map[string]interface{}{}
-		for k, v := range elt.(map[interface{}]interface{}) {
+		item := map[string]any{}
+		for k, v := range elt.(map[any]any) {
 			item[k.(string)] = v
 		}
 
@@ -247,7 +247,7 @@ func safeTomlSlice(r []interface{}) []interface{} {
 }
 
 // This element is not exported by revive, so we need copy the code.
-// Extracted from https://github.com/mgechev/revive/blob/v1.3.0/config/config.go#L15
+// Extracted from https://github.com/mgechev/revive/blob/v1.3.4/config/config.go#L15
 var defaultRules = []lint.Rule{
 	&rule.VarDeclarationsRule{},
 	&rule.PackageCommentsRule{},
@@ -267,7 +267,6 @@ var defaultRules = []lint.Rule{
 	&rule.TimeNamingRule{},
 	&rule.ContextKeysType{},
 	&rule.ContextAsArgumentRule{},
-	&rule.IfReturnRule{},
 	&rule.EmptyBlockRule{},
 	&rule.SuperfluousElseRule{},
 	&rule.UnusedParamRule{},
@@ -317,12 +316,17 @@ var allRules = append([]lint.Rule{
 	&rule.FunctionLength{},
 	&rule.NestedStructs{},
 	&rule.UselessBreak{},
+	&rule.UncheckedTypeAssertionRule{},
 	&rule.TimeEqualRule{},
 	&rule.BannedCharsRule{},
 	&rule.OptimizeOperandsOrderRule{},
 	&rule.UseAnyRule{},
 	&rule.DataRaceRule{},
 	&rule.CommentSpacingsRule{},
+	&rule.IfReturnRule{},
+	&rule.RedundantImportAlias{},
+	&rule.ImportAliasNamingRule{},
+	&rule.EnforceMapStyleRule{},
 }, defaultRules...)
 
 const defaultConfidence = 0.8

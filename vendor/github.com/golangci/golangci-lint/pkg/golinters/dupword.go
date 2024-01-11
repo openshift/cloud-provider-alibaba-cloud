@@ -13,10 +13,11 @@ import (
 func NewDupWord(setting *config.DupWordSettings) *goanalysis.Linter {
 	a := dupword.NewAnalyzer()
 
-	cfgMap := map[string]map[string]interface{}{}
+	cfgMap := map[string]map[string]any{}
 	if setting != nil {
-		cfgMap[a.Name] = map[string]interface{}{
+		cfgMap[a.Name] = map[string]any{
 			"keyword": strings.Join(setting.Keywords, ","),
+			"ignore":  strings.Join(setting.Ignore, ","),
 		}
 	}
 

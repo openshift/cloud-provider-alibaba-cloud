@@ -10,7 +10,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
-	discovery "k8s.io/api/discovery/v1beta1"
+	discovery "k8s.io/api/discovery/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -96,27 +96,27 @@ func add(mgr manager.Manager, r *ReconcileELB) error {
 		return err
 	}
 
-	if err := c.Watch(&source.Kind{Type: &v1.Service{}},
+	if err := c.Watch(source.Kind(mgr.GetCache(), &v1.Service{}),
 		NewEnqueueRequestForServiceEvent(mgr.GetEventRecorderFor("elb-controller"))); err != nil {
 		return fmt.Errorf("watch resource svc error: %s", err.Error())
 	}
 
 	if utilfeature.DefaultFeatureGate.Enabled(ctrlCfg.EndpointSlice) {
 		// watch endpointslice
-		if err := c.Watch(&source.Kind{Type: &discovery.EndpointSlice{}},
-			NewEnqueueRequestForEndpointSliceEvent(mgr.GetEventRecorderFor("elb-controller"))); err != nil {
+		if err := c.Watch(source.Kind(mgr.GetCache(), &discovery.EndpointSlice{}),
+			NewEnqueueRequestForEndpointSliceEvent(mgr.GetClient(), mgr.GetEventRecorderFor("elb-controller"))); err != nil {
 			return fmt.Errorf("watch resource endpointslice error: %s", err.Error())
 		}
 	} else {
 		// watch endpoints
-		if err := c.Watch(&source.Kind{Type: &v1.Endpoints{}},
-			NewEnqueueRequestForEndpointEvent(mgr.GetEventRecorderFor("elb-controller"))); err != nil {
+		if err := c.Watch(source.Kind(mgr.GetCache(), &v1.Endpoints{}),
+			NewEnqueueRequestForEndpointEvent(mgr.GetClient(), mgr.GetEventRecorderFor("elb-controller"))); err != nil {
 			return fmt.Errorf("watch resource endpoint error: %s", err.Error())
 		}
 	}
 
-	if err := c.Watch(&source.Kind{Type: &v1.Node{}},
-		NewEnqueueRequestForNodeEvent(mgr.GetEventRecorderFor("elb-controller"))); err != nil {
+	if err := c.Watch(source.Kind(mgr.GetCache(), &v1.Node{}),
+		NewEnqueueRequestForNodeEvent(mgr.GetClient(), mgr.GetEventRecorderFor("elb-controller"))); err != nil {
 		return fmt.Errorf("watch resource node error: %s", err.Error())
 	}
 	return mgr.Add(&elbController{c: c, recon: r})

@@ -3,7 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"os"
 
 	"github.com/mgechev/revive/formatter"
 
@@ -31,7 +31,6 @@ var defaultRules = []lint.Rule{
 	&rule.TimeNamingRule{},
 	&rule.ContextKeysType{},
 	&rule.ContextAsArgumentRule{},
-	&rule.IfReturnRule{},
 	&rule.EmptyBlockRule{},
 	&rule.SuperfluousElseRule{},
 	&rule.UnusedParamRule{},
@@ -81,12 +80,17 @@ var allRules = append([]lint.Rule{
 	&rule.FunctionLength{},
 	&rule.NestedStructs{},
 	&rule.UselessBreak{},
+	&rule.UncheckedTypeAssertionRule{},
 	&rule.TimeEqualRule{},
 	&rule.BannedCharsRule{},
 	&rule.OptimizeOperandsOrderRule{},
 	&rule.UseAnyRule{},
 	&rule.DataRaceRule{},
 	&rule.CommentSpacingsRule{},
+	&rule.IfReturnRule{},
+	&rule.RedundantImportAlias{},
+	&rule.ImportAliasNamingRule{},
+	&rule.EnforceMapStyleRule{},
 }, defaultRules...)
 
 var allFormatters = []lint.Formatter{
@@ -140,7 +144,7 @@ func GetLintingRules(config *lint.Config, extraRules []lint.Rule) ([]lint.Rule, 
 }
 
 func parseConfig(path string, config *lint.Config) error {
-	file, err := ioutil.ReadFile(path)
+	file, err := os.ReadFile(path)
 	if err != nil {
 		return errors.New("cannot read the config file")
 	}
@@ -148,6 +152,14 @@ func parseConfig(path string, config *lint.Config) error {
 	if err != nil {
 		return fmt.Errorf("cannot parse the config file: %v", err)
 	}
+	for k, r := range config.Rules {
+		err := r.Initialize()
+		if err != nil {
+			return fmt.Errorf("error in config of rule [%s] : [%v]", k, err)
+		}
+		config.Rules[k] = r
+	}
+
 	return nil
 }
 
