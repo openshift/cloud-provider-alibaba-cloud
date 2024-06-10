@@ -34,8 +34,9 @@ func Add(mgr manager.Manager, ctx *shared.SharedContext) error {
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager, ctx *shared.SharedContext) *ReconcileNode {
 	recon := &ReconcileNode{
-		monitorPeriod:   ctrlCfg.ControllerCFG.NodeMonitorPeriod.Duration,
-		statusFrequency: 5 * time.Minute,
+		monitorPeriod:    ctrlCfg.ControllerCFG.NodeMonitorPeriod.Duration,
+		statusFrequency:  5 * time.Minute,
+		configCloudRoute: ctrlCfg.ControllerCFG.ConfigureCloudRoutes,
 		// provider
 		cloud:  ctx.Provider(),
 		client: mgr.GetClient(),
@@ -64,7 +65,7 @@ func add(mgr manager.Manager, r *ReconcileNode) error {
 		"node-controller", mgr,
 		controller.Options{
 			Reconciler:              r,
-			MaxConcurrentReconciles: 1,
+			MaxConcurrentReconciles: ctrlCfg.CloudCFG.Global.NodeMaxConcurrentReconciles,
 			RecoverPanic:            &recoverPanic,
 		},
 	)
@@ -243,12 +244,12 @@ func (m *ReconcileNode) syncNode(nodes []corev1.Node) error {
 			cloudNode.Addresses = []corev1.NodeAddress{*nodeIP}
 		}
 
-		diff := func(copy runtime.Object) (client.Object, error) {
-			nins := copy.(*corev1.Node)
-			nins.Status.Addresses = cloudNode.Addresses
-			return nins, nil
+		statusDiff := func(copy *corev1.Node) (*corev1.Node, error) {
+			copy.Status.Addresses = cloudNode.Addresses
+			return copy, nil
 		}
-		err := helper.PatchM(m.client, node, diff, helper.PatchStatus)
+
+		err := helper.PatchNodeStatus(m.client, node, statusDiff)
 		if err != nil {
 			log.Error(err, "patch node address error, wait for next retry", "node", node.Name)
 			m.record.Event(
@@ -256,7 +257,7 @@ func (m *ReconcileNode) syncNode(nodes []corev1.Node) error {
 			)
 		}
 
-		diff = func(copy runtime.Object) (client.Object, error) {
+		diff := func(copy runtime.Object) (client.Object, error) {
 			nins := copy.(*corev1.Node)
 			setFields(nins, cloudNode, false)
 			return nins, nil

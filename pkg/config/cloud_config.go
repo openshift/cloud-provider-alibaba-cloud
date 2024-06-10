@@ -3,10 +3,16 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/util"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/yaml"
+)
+
+const (
+	DefaultServiceMaxConcurrentReconciles = 3
+	DefaultNodeMaxConcurrentReconciles    = 1
 )
 
 var CloudCFG = &CloudConfig{}
@@ -25,14 +31,17 @@ type CloudConfig struct {
 		VpcID                string `json:"vpcid"`
 		ZoneID               string `json:"zoneid"`
 		VswitchID            string `json:"vswitchid"`
+		ResourceGroupID      string `json:"resourceGroupID"`
 
 		// service controller
-		ServiceBackendType string `json:"serviceBackendType"`
-		DisablePublicSLB   bool   `json:"disablePublicSLB"`
+		ServiceMaxConcurrentReconciles int    `json:"serviceMaxConcurrentReconciles"`
+		ServiceBackendType             string `json:"serviceBackendType"`
+		DisablePublicSLB               bool   `json:"disablePublicSLB"`
 
 		// node controller
-		NodeMonitorPeriod  int64 `json:"nodeMonitorPeriod"`
-		NodeAddrSyncPeriod int64 `json:"nodeAddrSyncPeriod"`
+		NodeMaxConcurrentReconciles int   `json:"nodeMaxConcurrentReconciles"`
+		NodeMonitorPeriod           int64 `json:"nodeMonitorPeriod"`
+		NodeAddrSyncPeriod          int64 `json:"nodeAddrSyncPeriod"`
 
 		// route controller
 		RouteTableIDS string `json:"routeTableIDs"`
@@ -50,7 +59,23 @@ func (cc *CloudConfig) LoadCloudCFG() error {
 	if err != nil {
 		return fmt.Errorf("read cloud config error: %s ", err.Error())
 	}
-	return yaml.Unmarshal(content, CloudCFG)
+	err = yaml.Unmarshal(content, CloudCFG)
+	if err != nil {
+		return err
+	}
+	CloudCFG.SetDefaultValue()
+	return nil
+}
+
+func (cc *CloudConfig) SetDefaultValue() {
+	if cc.Global.ServiceMaxConcurrentReconciles == 0 {
+		cc.Global.ServiceMaxConcurrentReconciles = DefaultServiceMaxConcurrentReconciles
+	}
+	if cc.Global.NodeMaxConcurrentReconciles == 0 {
+		cc.Global.NodeMaxConcurrentReconciles = DefaultNodeMaxConcurrentReconciles
+	}
+	CloudCFG.Global.ResourceGroupID = strings.TrimSpace(CloudCFG.Global.ResourceGroupID)
+	CloudCFG.Global.RouteTableIDS = strings.TrimSpace(CloudCFG.Global.RouteTableIDS)
 }
 
 func (cc *CloudConfig) GetKubernetesClusterTag() string {
@@ -65,7 +90,14 @@ func (cc *CloudConfig) PrintInfo() {
 		klog.Infof("using user customized route table ids [%s]", cc.Global.RouteTableIDS)
 	}
 
+	if cc.Global.ResourceGroupID != "" {
+		klog.Infof("using default resource group id [%s]", cc.Global.ResourceGroupID)
+	}
+
 	if cc.Global.FeatureGates != "" {
 		klog.Infof("using feature gate: %s", cc.Global.FeatureGates)
 	}
+
+	klog.Infof("NodeMaxConcurrentReconciles: %d, ServiceMaxConcurrentReconciles: %d",
+		cc.Global.NodeMaxConcurrentReconciles, cc.Global.ServiceMaxConcurrentReconciles)
 }

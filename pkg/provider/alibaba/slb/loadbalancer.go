@@ -15,7 +15,6 @@ import (
 	"strings"
 
 	"github.com/aliyun/alibaba-cloud-sdk-go/sdk/requests"
-	"github.com/aliyun/alibaba-cloud-sdk-go/sdk/utils"
 	"github.com/aliyun/alibaba-cloud-sdk-go/services/slb"
 )
 
@@ -35,9 +34,19 @@ func (p SLBProvider) FindLoadBalancer(ctx context.Context, mdl *model.LoadBalanc
 
 	// 1. find by loadbalancer id
 	if mdl.LoadBalancerAttribute.LoadBalancerId != "" {
+		lbId := mdl.LoadBalancerAttribute.LoadBalancerId
 		klog.Infof("[%s] find loadbalancer by id, LoadBalancerId [%s]",
 			mdl.NamespacedName, mdl.LoadBalancerAttribute.LoadBalancerId)
-		return p.DescribeLoadBalancer(ctx, mdl)
+		err := p.DescribeLoadBalancer(ctx, mdl)
+		if err != nil {
+			return err
+		}
+		// Check LoadBalancer ID once more to prevent from an abnormal response from API.
+		if mdl.LoadBalancerAttribute.LoadBalancerId != lbId {
+			return fmt.Errorf("[%s] find loadbalancer by id error: loadbalancer id from API not match, expect [%s], actual [%s]",
+				mdl.NamespacedName, lbId, mdl.LoadBalancerAttribute.LoadBalancerId)
+		}
+		return nil
 	}
 
 	// 2. find by tags
@@ -139,10 +148,12 @@ func (p SLBProvider) FindLoadBalancerByName(mdl *model.LoadBalancer) error {
 	return nil
 }
 
-func (p SLBProvider) CreateLoadBalancer(ctx context.Context, mdl *model.LoadBalancer) error {
+func (p SLBProvider) CreateLoadBalancer(ctx context.Context, mdl *model.LoadBalancer, clientToken string) error {
 	req := slb.CreateCreateLoadBalancerRequest()
 	setRequest(req, mdl)
-	req.ClientToken = utils.GetUUID()
+	if clientToken != "" {
+		req.ClientToken = clientToken
+	}
 	if ascmContext := os.Getenv("X-ACSPROXY-ASCM-CONTEXT"); ascmContext != "" {
 		req.GetHeaders()["x-acsproxy-ascm-context"] = ascmContext
 	}

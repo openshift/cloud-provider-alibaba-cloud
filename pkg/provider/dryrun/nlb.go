@@ -2,6 +2,7 @@ package dryrun
 
 import (
 	"context"
+
 	nlbmodel "k8s.io/cloud-provider-alibaba-cloud/pkg/model/nlb"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/model/tag"
 	prvd "k8s.io/cloud-provider-alibaba-cloud/pkg/provider"
@@ -72,6 +73,22 @@ func (d DryRunNLB) UpdateNLBZones(ctx context.Context, mdl *nlbmodel.NetworkLoad
 	panic("implement me")
 }
 
+func (d DryRunNLB) UpdateLoadBalancerProtection(ctx context.Context, lbId string,
+	delCfg *nlbmodel.DeletionProtectionConfig, modCfg *nlbmodel.ModificationProtectionConfig) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d DryRunNLB) AttachCommonBandwidthPackageToLoadBalancer(ctx context.Context, lbId string, bandwidthPackageId string) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d DryRunNLB) DetachCommonBandwidthPackageFromLoadBalancer(ctx context.Context, lbId string, bandwidthPackageId string) error {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (d DryRunNLB) ListNLBServerGroups(ctx context.Context, tags []tag.Tag) ([]*nlbmodel.ServerGroup, error) {
 	//TODO implement me
 	panic("implement me")
@@ -133,6 +150,15 @@ func (d DryRunNLB) StartNLBListener(ctx context.Context, listenerId string) erro
 }
 
 func (d DryRunNLB) StopNLBListener(ctx context.Context, listenerId string) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d DryRunNLB) UpdateNLBIPv6AddressType(ctx context.Context, mdl *nlbmodel.NetworkLoadBalancer) error {
+	panic("implement me")
+}
+
+func (d DryRunNLB) GetNLBServerGroup(ctx context.Context, sgId string) (*nlbmodel.ServerGroup, error) {
 	//TODO implement me
 	panic("implement me")
 }

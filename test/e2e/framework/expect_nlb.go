@@ -3,6 +3,11 @@ package framework
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/alibabacloud-go/tea/tea"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -16,12 +21,8 @@ import (
 	nlbmodel "k8s.io/cloud-provider-alibaba-cloud/pkg/model/nlb"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/provider/alibaba/base"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/util"
-	"k8s.io/cloud-provider-alibaba-cloud/test/e2e/client"
 	"k8s.io/cloud-provider-alibaba-cloud/test/e2e/options"
 	"k8s.io/klog/v2"
-	"strconv"
-	"strings"
-	"time"
 )
 
 func (f *Framework) ExpectNetworkLoadBalancerEqual(svc *v1.Service) error {
@@ -197,6 +198,12 @@ func networkLoadBalancerAttrEqual(f *Framework, anno *annotation.AnnotationReque
 		}
 	}
 
+	if ipv6AddressType := anno.Get(annotation.IPv6AddressType); ipv6AddressType != "" {
+		if !strings.EqualFold(ipv6AddressType, nlb.IPv6AddressType) {
+			return fmt.Errorf("expected nlb ipv6 address type %s, got %s", ipv6AddressType, nlb.IPv6AddressType)
+		}
+	}
+
 	if resourceGroupId := anno.Get(annotation.ResourceGroupId); resourceGroupId != "" {
 		if resourceGroupId != nlb.ResourceGroupId {
 			return fmt.Errorf("expected nlb resource group id %s, got %s", resourceGroupId, nlb.ResourceGroupId)
@@ -277,6 +284,7 @@ func nlbVsgAttrEqual(f *Framework, reqCtx *svcCtx.RequestContext, remote *nlbmod
 		var (
 			groupId string
 			err     error
+			weight  *int
 		)
 		proto, err := nlbListenerProtocol(reqCtx.Anno.Get(annotation.ProtocolPort), port)
 		if err != nil {
@@ -288,6 +296,14 @@ func nlbVsgAttrEqual(f *Framework, reqCtx *svcCtx.RequestContext, remote *nlbmod
 			if err != nil {
 				return fmt.Errorf("parse vgroup port annotation %s error: %s", vGroupAnno, err.Error())
 			}
+
+			if weightAnno := reqCtx.Anno.Get(annotation.VGroupWeight); weightAnno != "" {
+				w, err := strconv.Atoi(weightAnno)
+				if err != nil {
+					return fmt.Errorf("parse vgroup weight annotation %s error: %s", weightAnno, err.Error())
+				}
+				weight = &w
+			}
 		}
 
 		found := false
@@ -298,6 +314,7 @@ func nlbVsgAttrEqual(f *Framework, reqCtx *svcCtx.RequestContext, remote *nlbmod
 			if sg.ServerGroupId == groupId {
 				found = true
 				sg.IsUserManaged = true
+				sg.ServerGroupName = name
 			}
 			if found {
 				sgType := reqCtx.Anno.Get(annotation.ServerGroupType)
@@ -308,12 +325,13 @@ func nlbVsgAttrEqual(f *Framework, reqCtx *svcCtx.RequestContext, remote *nlbmod
 
 				sg.ServicePort = &port
 				sg.ServicePort.Protocol = v1.Protocol(proto)
+				sg.Weight = weight
 				if isOverride(reqCtx.Anno) && !isNLBServerGroupUsedByPort(sg, remote.Listeners) {
 					return fmt.Errorf("port %d do not use vgroup id: %s", port.Port, sg.ServerGroupId)
 				}
-				equal, err := isNLBBackendEqual(f.Client.KubeClient, reqCtx, sg)
+				equal, err := isNLBBackendEqual(f, reqCtx, sg)
 				if err != nil || !equal {
-					return fmt.Errorf("port %d and vgroup %s do not have equal backends, error: CreateNLBServiceByAnno",
+					return fmt.Errorf("port %d and vgroup %s do not have equal backends, error: CreateNLBServiceByAnno, %s",
 						port.Port, sg.ServerGroupId, err)
 				}
 				err = serverGroupAttrEqual(reqCtx, sg)
@@ -414,9 +432,9 @@ func isNLBServerGroupUsedByPort(sg *nlbmodel.ServerGroup, listeners []*nlbmodel.
 	return false
 }
 
-func isNLBBackendEqual(client *client.KubeClient, reqCtx *svcCtx.RequestContext, sg *nlbmodel.ServerGroup) (bool, error) {
+func isNLBBackendEqual(f *Framework, reqCtx *svcCtx.RequestContext, sg *nlbmodel.ServerGroup) (bool, error) {
 	policy := getTrafficPolicy(reqCtx)
-	endpoints, err := client.GetEndpoint()
+	endpoints, err := f.Client.KubeClient.GetEndpoint()
 	if err != nil {
 		if !errors.IsNotFound(err) {
 			return false, err
@@ -424,7 +442,7 @@ func isNLBBackendEqual(client *client.KubeClient, reqCtx *svcCtx.RequestContext,
 		klog.Infof("endpoint is nil")
 	}
 
-	nodes, err := client.ListNodes()
+	nodes, err := f.Client.KubeClient.ListNodes()
 	if err != nil {
 		return false, err
 	}
@@ -432,7 +450,7 @@ func isNLBBackendEqual(client *client.KubeClient, reqCtx *svcCtx.RequestContext,
 	var backends []nlbmodel.ServerGroupServer
 	switch policy {
 	case helper.ENITrafficPolicy:
-		backends, err = buildServerGroupENIBackends(reqCtx.Anno, endpoints, sg)
+		backends, err = buildServerGroupENIBackends(f, reqCtx.Anno, endpoints, sg, model.IPv4)
 		if err != nil {
 			return false, err
 		}
@@ -482,7 +500,8 @@ func isServerEqual(a, b nlbmodel.ServerGroupServer) bool {
 
 	switch a.ServerType {
 	case nlbmodel.EniServerType:
-		return a.ServerId == b.ServerId && a.ServerIp == b.ServerIp
+		return a.ServerIp == b.ServerIp
+		//return a.ServerId == b.ServerId && a.ServerIp == b.ServerIp
 	case nlbmodel.EcsServerType:
 		return a.ServerId == b.ServerId
 	case nlbmodel.IpServerType:
@@ -589,7 +608,7 @@ func getServerGroupName(svc *v1.Service, protocol string, servicePort *v1.Servic
 	return namedKey.Key()
 }
 
-func buildServerGroupENIBackends(anno *annotation.AnnotationRequest, ep *v1.Endpoints, sg *nlbmodel.ServerGroup) ([]nlbmodel.ServerGroupServer, error) {
+func buildServerGroupENIBackends(f *Framework, anno *annotation.AnnotationRequest, ep *v1.Endpoints, sg *nlbmodel.ServerGroup, ipVersion model.AddressIPVersionType) ([]nlbmodel.ServerGroupServer, error) {
 	var ret []nlbmodel.ServerGroupServer
 	for _, subset := range ep.Subsets {
 		backendPort := getBackendPort(*sg.ServicePort, subset)
@@ -602,6 +621,16 @@ func buildServerGroupENIBackends(anno *annotation.AnnotationRequest, ep *v1.Endp
 		}
 	}
 
+	var ips []string
+	for _, b := range ret {
+		ips = append(ips, b.ServerIp)
+	}
+
+	result, err := f.Client.CloudClient.DescribeNetworkInterfaces(options.TestConfig.VPCID, ips, ipVersion)
+	if err != nil {
+		return nil, fmt.Errorf("call DescribeNetworkInterfaces: %s", err.Error())
+	}
+
 	if sg.ServerGroupType == nlbmodel.IpServerGroupType {
 		for i := range ret {
 			ret[i].ServerId = ret[i].ServerIp
@@ -609,7 +638,12 @@ func buildServerGroupENIBackends(anno *annotation.AnnotationRequest, ep *v1.Endp
 		}
 	} else {
 		for i := range ret {
-			ret[i].ServerType = model.ENIBackendType
+			eniid, ok := result[ret[i].ServerIp]
+			if !ok {
+				return nil, fmt.Errorf("can not find eniid for ip %s in vpc %s", ret[i].ServerIp, options.TestConfig.VPCID)
+			}
+			ret[i].ServerId = eniid
+			ret[i].ServerType = nlbmodel.EniServerType
 		}
 	}
 	return setServerGroupWeightBackends(helper.ENITrafficPolicy, ret, sg.Weight), nil
@@ -844,6 +878,30 @@ func genericNLBServerEqual(reqCtx *svcCtx.RequestContext, local v1.ServicePort, 
 		remoteEnabled := remote.ProxyProtocolEnabled != nil && *remote.ProxyProtocolEnabled
 		if localEnabled != remoteEnabled {
 			return fmt.Errorf("expected nlb proxy protocol %t, got %+v", localEnabled, remote.ProxyProtocolEnabled)
+		}
+	}
+
+	if epIDEnabled := reqCtx.Anno.Get(annotation.Ppv2PrivateLinkEpIdEnabled); epIDEnabled != "" {
+		localEnabled := strings.EqualFold(epIDEnabled, string(model.OnFlag))
+		remoteEnabled := tea.BoolValue(remote.ProxyProtocolV2Config.PrivateLinkEpIdEnabled)
+		if localEnabled != remoteEnabled {
+			return fmt.Errorf("expected nlb ppv2 privatelink ep id enabled %t, got %t(%+v)", localEnabled, remoteEnabled, remote.ProxyProtocolV2Config.PrivateLinkEpIdEnabled)
+		}
+	}
+
+	if epsIDEnabled := reqCtx.Anno.Get(annotation.Ppv2PrivateLinkEpsIdEnabled); epsIDEnabled != "" {
+		localEnabled := strings.EqualFold(epsIDEnabled, string(model.OnFlag))
+		remoteEnabled := tea.BoolValue(remote.ProxyProtocolV2Config.PrivateLinkEpsIdEnabled)
+		if localEnabled != remoteEnabled {
+			return fmt.Errorf("expected nlb ppv2 privatelink eps id enabled %t, got %t(%+v)", localEnabled, remoteEnabled, remote.ProxyProtocolV2Config.PrivateLinkEpsIdEnabled)
+		}
+	}
+
+	if vpcIDEnabled := reqCtx.Anno.Get(annotation.Ppv2VpcIdEnabled); vpcIDEnabled != "" {
+		localEnabled := strings.EqualFold(vpcIDEnabled, string(model.OnFlag))
+		remoteEnabled := tea.BoolValue(remote.ProxyProtocolV2Config.VpcIdEnabled)
+		if localEnabled != remoteEnabled {
+			return fmt.Errorf("expected nlb ppv2 privatelink vpc id enabled %t, got %t(%+v)", localEnabled, remoteEnabled, remote.ProxyProtocolV2Config.VpcIdEnabled)
 		}
 	}
 

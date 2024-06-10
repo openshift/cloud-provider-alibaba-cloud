@@ -6,11 +6,15 @@ import (
 	v1 "k8s.io/api/core/v1"
 	discovery "k8s.io/api/discovery/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
+	ctrlCfg "k8s.io/cloud-provider-alibaba-cloud/pkg/config"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/controller/helper"
+	"k8s.io/cloud-provider-alibaba-cloud/pkg/controller/service/reconcile/annotation"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/util"
 	"k8s.io/klog/v2"
 	"reflect"
@@ -294,18 +298,24 @@ func (h *enqueueRequestForNodeEvent) Generic(_ context.Context, e event.GenericE
 }
 
 func (h *enqueueRequestForNodeEvent) enqueueManagedNode(queue workqueue.RateLimitingInterface, node *v1.Node) {
-
-	// node change would cause all service object reconcile
 	svcs := v1.ServiceList{}
-	err := h.client.List(context.TODO(), &svcs)
+	err := h.client.List(context.TODO(), &svcs, &client.ListOptions{
+		Raw: &metav1.ListOptions{
+			ResourceVersion: "0",
+		},
+	})
 	if err != nil {
 		util.ServiceLog.Error(err, "fail to list services for node",
 			"node", node.Name)
 		return
 	}
 
+	filterService := utilfeature.DefaultFeatureGate.Enabled(ctrlCfg.FilterServiceOnNodeChange)
 	for _, v := range svcs.Items {
 		if !helper.NeedCLB(&v) {
+			continue
+		}
+		if filterService && !h.checkServiceAffected(node, &v) {
 			continue
 		}
 		queue.Add(reconcile.Request{
@@ -317,6 +327,29 @@ func (h *enqueueRequestForNodeEvent) enqueueManagedNode(queue workqueue.RateLimi
 		util.ServiceLog.Info(fmt.Sprintf("node change: enqueue service %s", util.Key(&v)),
 			"node", node.Name, "queueLen", queue.Len())
 	}
+}
+
+func (h *enqueueRequestForNodeEvent) checkServiceAffected(node *v1.Node, svc *v1.Service) bool {
+	if helper.IsENIBackendType(svc) {
+		return false
+	}
+
+	if svc.Spec.ExternalTrafficPolicy == v1.ServiceExternalTrafficPolicyTypeCluster {
+		return true
+	}
+
+	r := annotation.NewAnnotationRequest(svc)
+	// service with annotation `service.beta.kubernetes.io/alibaba-cloud-loadbalancer-backend-label`
+	// or `service.beta.kubernetes.io/alibaba-cloud-loadbalancer-remove-unscheduled-backend`
+	// should be considered as affected.
+	if r.Get(annotation.BackendLabel) != "" ||
+		r.Get(annotation.RemoveUnscheduled) != "" {
+		util.ServiceLog.Info("service is affected by node change because of annotations",
+			"node", node.Name, "service", util.Key(svc))
+		return true
+	}
+
+	return false
 }
 
 // NewEnqueueRequestForEndpointSliceEvent, event handler for endpointslice event

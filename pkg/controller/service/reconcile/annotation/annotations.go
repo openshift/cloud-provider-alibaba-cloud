@@ -2,8 +2,9 @@ package annotation
 
 import (
 	"fmt"
-	"k8s.io/cloud-provider-alibaba-cloud/pkg/model/tag"
 	"strings"
+
+	"k8s.io/cloud-provider-alibaba-cloud/pkg/model/tag"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/controller/helper"
@@ -26,11 +27,13 @@ const (
 	AnnotationLoadBalancerPrefix = "loadbalancer-"
 
 	// Load Balancer Attribute
-	AddressType      = AnnotationLoadBalancerPrefix + "address-type"             // AddressType loadbalancer address type
-	LoadBalancerId   = AnnotationLoadBalancerPrefix + "id"                       // LoadBalancerId lb id
-	LoadBalancerName = AnnotationLoadBalancerPrefix + "name"                     // LoadBalancerName slb name
-	ResourceGroupId  = AnnotationLoadBalancerPrefix + "resource-group-id"        // ResourceGroupId resource group id
-	AdditionalTags   = AnnotationLoadBalancerPrefix + "additional-resource-tags" // AdditionalTags For example: "Key1=Val1,Key2=Val2,KeyNoVal1=,KeyNoVal2",same with aws
+	AddressType            = AnnotationLoadBalancerPrefix + "address-type"             // AddressType loadbalancer address type
+	LoadBalancerId         = AnnotationLoadBalancerPrefix + "id"                       // LoadBalancerId lb id
+	LoadBalancerName       = AnnotationLoadBalancerPrefix + "name"                     // LoadBalancerName slb name
+	ResourceGroupId        = AnnotationLoadBalancerPrefix + "resource-group-id"        // ResourceGroupId resource group id
+	AdditionalTags         = AnnotationLoadBalancerPrefix + "additional-resource-tags" // AdditionalTags For example: "Key1=Val1,Key2=Val2,KeyNoVal1=,KeyNoVal2",same with aws
+	DeleteProtection       = AnnotationLoadBalancerPrefix + "delete-protection"        // DeleteProtection delete protection
+	ModificationProtection = AnnotationLoadBalancerPrefix + "modification-protection"  // ModificationProtection modification type
 
 	CertID          = AnnotationLoadBalancerPrefix + "cert-id"           // CertID cert id
 	ProtocolPort    = AnnotationLoadBalancerPrefix + "protocol-port"     // ProtocolPort protocol port
@@ -46,51 +49,51 @@ const (
 // classic load balancer
 
 const (
-	VswitchId              = AnnotationLoadBalancerPrefix + "vswitch-id"               // VswitchId loadbalancer vswitch id
-	SLBNetworkType         = AnnotationLoadBalancerPrefix + "slb-network-type"         // SLBNetworkType loadbalancer network type
-	ChargeType             = AnnotationLoadBalancerPrefix + "charge-type"              // InternetChargeType lb internet charge type, paybytraffic or paybybandwidth
-	OverrideListener       = AnnotationLoadBalancerPrefix + "force-override-listeners" // OverrideListener force override listeners
-	MasterZoneID           = AnnotationLoadBalancerPrefix + "master-zoneid"            // MasterZoneID master zone id
-	SlaveZoneID            = AnnotationLoadBalancerPrefix + "slave-zoneid"             // SlaveZoneID slave zone id
-	Bandwidth              = AnnotationLoadBalancerPrefix + "bandwidth"                // Bandwidth bandwidth
-	Spec                   = AnnotationLoadBalancerPrefix + "spec"                     // Spec slb spec
-	InstanceChargeType     = AnnotationLoadBalancerPrefix + "instance-charge-type"     // InstanceChargeType the charge type of lb instance
-	IPVersion              = AnnotationLoadBalancerPrefix + "ip-version"               // IPVersion ip version
-	DeleteProtection       = AnnotationLoadBalancerPrefix + "delete-protection"        // DeleteProtection delete protection
-	ModificationProtection = AnnotationLoadBalancerPrefix + "modification-protection"  // ModificationProtection modification type
-	ExternalIPType         = AnnotationLoadBalancerPrefix + "external-ip-type"         // ExternalIPType external ip type
-	HostName               = AnnotationLoadBalancerPrefix + "hostname"                 // HostName hostname for service.status.ingress.hostname
-	IP                     = AnnotationLoadBalancerPrefix + "ip"                       // Ip Address
+	VswitchId          = AnnotationLoadBalancerPrefix + "vswitch-id"               // VswitchId loadbalancer vswitch id
+	SLBNetworkType     = AnnotationLoadBalancerPrefix + "slb-network-type"         // SLBNetworkType loadbalancer network type
+	ChargeType         = AnnotationLoadBalancerPrefix + "charge-type"              // InternetChargeType lb internet charge type, paybytraffic or paybybandwidth
+	OverrideListener   = AnnotationLoadBalancerPrefix + "force-override-listeners" // OverrideListener force override listeners
+	MasterZoneID       = AnnotationLoadBalancerPrefix + "master-zoneid"            // MasterZoneID master zone id
+	SlaveZoneID        = AnnotationLoadBalancerPrefix + "slave-zoneid"             // SlaveZoneID slave zone id
+	Bandwidth          = AnnotationLoadBalancerPrefix + "bandwidth"                // Bandwidth bandwidth
+	Spec               = AnnotationLoadBalancerPrefix + "spec"                     // Spec slb spec
+	InstanceChargeType = AnnotationLoadBalancerPrefix + "instance-charge-type"     // InstanceChargeType the charge type of lb instance
+	IPVersion          = AnnotationLoadBalancerPrefix + "ip-version"               // IPVersion ip version
+	ExternalIPType     = AnnotationLoadBalancerPrefix + "external-ip-type"         // ExternalIPType external ip type
+	HostName           = AnnotationLoadBalancerPrefix + "hostname"                 // HostName hostname for service.status.ingress.hostname
+	IP                 = AnnotationLoadBalancerPrefix + "ip"                       // Ip Address
 
 	// Listener Attribute
-	AclStatus                 = AnnotationLoadBalancerPrefix + "acl-status"                   // AclStatus enable or disable acl on all listener
-	AclID                     = AnnotationLoadBalancerPrefix + "acl-id"                       // AclID acl id
-	AclType                   = AnnotationLoadBalancerPrefix + "acl-type"                     // AclType acl type, black or white
-	ForwardPort               = AnnotationLoadBalancerPrefix + "forward-port"                 // ForwardPort loadbalancer forward port
-	EnableHttp2               = AnnotationLoadBalancerPrefix + "http2-enabled"                // EnableHttp2 enable http2 on https port
-	HealthCheckSwitch         = AnnotationLoadBalancerPrefix + "health-check-switch"          // HealthCheckSwitch health check switch flag, only for tcp & udp
-	HealthCheckFlag           = AnnotationLoadBalancerPrefix + "health-check-flag"            // HealthCheckFlag health check flag, only for http & https
-	HealthCheckType           = AnnotationLoadBalancerPrefix + "health-check-type"            // HealthCheckType health check type
-	HealthCheckURI            = AnnotationLoadBalancerPrefix + "health-check-uri"             // HealthCheckURI health check uri
-	HealthCheckConnectPort    = AnnotationLoadBalancerPrefix + "health-check-connect-port"    // HealthCheckConnectPort health check connect port
-	HealthyThreshold          = AnnotationLoadBalancerPrefix + "healthy-threshold"            // HealthyThreshold health check healthy thresh hold
-	UnhealthyThreshold        = AnnotationLoadBalancerPrefix + "unhealthy-threshold"          // UnhealthyThreshold health check unhealthy thresh hold
-	HealthCheckInterval       = AnnotationLoadBalancerPrefix + "health-check-interval"        // HealthCheckInterval health check interval
-	HealthCheckConnectTimeout = AnnotationLoadBalancerPrefix + "health-check-connect-timeout" // HealthCheckConnectTimeout health check connect timeout
-	HealthCheckTimeout        = AnnotationLoadBalancerPrefix + "health-check-timeout"         // HealthCheckTimeout health check timeout
-	HealthCheckDomain         = AnnotationLoadBalancerPrefix + "health-check-domain"          // HealthCheckDomain health check domain
-	HealthCheckHTTPCode       = AnnotationLoadBalancerPrefix + "health-check-httpcode"        // HealthCheckHTTPCode health check http code
-	HealthCheckMethod         = AnnotationLoadBalancerPrefix + "health-check-method"          // HealthCheckMethod health check method for L7
-	SessionStick              = AnnotationLoadBalancerPrefix + "sticky-session"               // SessionStick sticky session
-	SessionStickType          = AnnotationLoadBalancerPrefix + "sticky-session-type"          // SessionStickType session sticky type
-	CookieTimeout             = AnnotationLoadBalancerPrefix + "cookie-timeout"               // CookieTimeout cookie timeout
-	Cookie                    = AnnotationLoadBalancerPrefix + "cookie"                       // Cookie lb cookie
-	PersistenceTimeout        = AnnotationLoadBalancerPrefix + "persistence-timeout"          // PersistenceTimeout persistence timeout
-	VGroupPort                = AnnotationLoadBalancerPrefix + "vgroup-port"                  // VGroupIDs binding user managed vGroup ids to ports
-	XForwardedForProto        = AnnotationLoadBalancerPrefix + "xforwardedfor-proto"          // XForwardedForProto whether to use the X-Forwarded-Proto header to retrieve the listener protocol
-	RequestTimeout            = AnnotationLoadBalancerPrefix + "request-timeout"              // RequestTimeout request timeout for L7
-	EstablishedTimeout        = AnnotationLoadBalancerPrefix + "established-timeout"          // EstablishedTimeout connection established time out for TCP
-	ProxyProtocol             = AnnotationLoadBalancerPrefix + "proxy-protocol"
+	AclStatus                  = AnnotationLoadBalancerPrefix + "acl-status"                   // AclStatus enable or disable acl on all listener
+	AclID                      = AnnotationLoadBalancerPrefix + "acl-id"                       // AclID acl id
+	AclType                    = AnnotationLoadBalancerPrefix + "acl-type"                     // AclType acl type, black or white
+	ForwardPort                = AnnotationLoadBalancerPrefix + "forward-port"                 // ForwardPort loadbalancer forward port
+	EnableHttp2                = AnnotationLoadBalancerPrefix + "http2-enabled"                // EnableHttp2 enable http2 on https port
+	HealthCheckSwitch          = AnnotationLoadBalancerPrefix + "health-check-switch"          // HealthCheckSwitch health check switch flag, only for tcp & udp
+	HealthCheckFlag            = AnnotationLoadBalancerPrefix + "health-check-flag"            // HealthCheckFlag health check flag, only for http & https
+	HealthCheckType            = AnnotationLoadBalancerPrefix + "health-check-type"            // HealthCheckType health check type
+	HealthCheckURI             = AnnotationLoadBalancerPrefix + "health-check-uri"             // HealthCheckURI health check uri
+	HealthCheckConnectPort     = AnnotationLoadBalancerPrefix + "health-check-connect-port"    // HealthCheckConnectPort health check connect port
+	HealthyThreshold           = AnnotationLoadBalancerPrefix + "healthy-threshold"            // HealthyThreshold health check healthy thresh hold
+	UnhealthyThreshold         = AnnotationLoadBalancerPrefix + "unhealthy-threshold"          // UnhealthyThreshold health check unhealthy thresh hold
+	HealthCheckInterval        = AnnotationLoadBalancerPrefix + "health-check-interval"        // HealthCheckInterval health check interval
+	HealthCheckConnectTimeout  = AnnotationLoadBalancerPrefix + "health-check-connect-timeout" // HealthCheckConnectTimeout health check connect timeout
+	HealthCheckTimeout         = AnnotationLoadBalancerPrefix + "health-check-timeout"         // HealthCheckTimeout health check timeout
+	HealthCheckDomain          = AnnotationLoadBalancerPrefix + "health-check-domain"          // HealthCheckDomain health check domain
+	HealthCheckHTTPCode        = AnnotationLoadBalancerPrefix + "health-check-httpcode"        // HealthCheckHTTPCode health check http code
+	HealthCheckMethod          = AnnotationLoadBalancerPrefix + "health-check-method"          // HealthCheckMethod health check method for L7
+	SessionStick               = AnnotationLoadBalancerPrefix + "sticky-session"               // SessionStick sticky session
+	SessionStickType           = AnnotationLoadBalancerPrefix + "sticky-session-type"          // SessionStickType session sticky type
+	CookieTimeout              = AnnotationLoadBalancerPrefix + "cookie-timeout"               // CookieTimeout cookie timeout
+	Cookie                     = AnnotationLoadBalancerPrefix + "cookie"                       // Cookie lb cookie
+	PersistenceTimeout         = AnnotationLoadBalancerPrefix + "persistence-timeout"          // PersistenceTimeout persistence timeout
+	VGroupPort                 = AnnotationLoadBalancerPrefix + "vgroup-port"                  // VGroupIDs binding user managed vGroup ids to ports
+	XForwardedForProto         = AnnotationLoadBalancerPrefix + "xforwardedfor-proto"          // XForwardedForProto whether to use the X-Forwarded-Proto header to retrieve the listener protocol
+	XForwardedForSLBPort       = AnnotationLoadBalancerPrefix + "xforwardedfor-slbport"        // XForwardedForSLBPort  whether to use the XForwardedFor_SLBPORT header to retrieve the listener port of the CLB instance
+	XForwardedForClientSrcPort = AnnotationLoadBalancerPrefix + "xforwardedfor-clientsrcport"  // XForwardedForClientSrcPort whether to use the XForwardedFor_ClientSrcPort header to retrieve the client port
+	RequestTimeout             = AnnotationLoadBalancerPrefix + "request-timeout"              // RequestTimeout request timeout for L7
+	EstablishedTimeout         = AnnotationLoadBalancerPrefix + "established-timeout"          // EstablishedTimeout connection established time out for TCP
+	ProxyProtocol              = AnnotationLoadBalancerPrefix + "proxy-protocol"
 
 	// VServerBackend Attribute
 	BackendLabel      = AnnotationLoadBalancerPrefix + "backend-label"              // BackendLabel backend labels
@@ -102,8 +105,10 @@ const (
 
 // network load balancer
 const (
-	ZoneMaps         = AnnotationLoadBalancerPrefix + "zone-maps" // ZoneMaps zone maps
-	SecurityGroupIds = AnnotationLoadBalancerPrefix + "security-group-ids"
+	ZoneMaps           = AnnotationLoadBalancerPrefix + "zone-maps" // ZoneMaps zone maps
+	SecurityGroupIds   = AnnotationLoadBalancerPrefix + "security-group-ids"
+	BandwidthPackageId = AnnotationLoadBalancerPrefix + "bandwidth-package-id"
+	IPv6AddressType    = AnnotationLoadBalancerPrefix + "ipv6-address-type"
 
 	CaCertID = AnnotationLoadBalancerPrefix + "cacert-id" // CertID cert id
 	CaCert   = AnnotationLoadBalancerPrefix + "cacert"    // CaCert enable ca
@@ -111,20 +116,10 @@ const (
 
 	PreserveClientIp = AnnotationLoadBalancerPrefix + "preserve-client-ip"
 	ServerGroupType  = AnnotationLoadBalancerPrefix + "server-group-type" // ServerGroupType, ECS/ECI; IP
-)
 
-// edge load balancer
-const (
-	EdgeLoadBalancerReUse = AnnotationLoadBalancerPrefix + "reuse"
-	EdgeNetWorkId         = AnnotationLoadBalancerPrefix + "network-id"
-	EdgeServerWeight      = AnnotationLoadBalancerPrefix + "backend-weight"
-	EdgePayType           = AnnotationLegacyPrefix + "pay-type"
-
-	EdgeEipAssociate          = AnnotationLoadBalancerPrefix + "associate-eip"
-	EdgeEipId                 = AnnotationLoadBalancerPrefix + "eip-id"
-	EdgeEipBandwidth          = AnnotationLoadBalancerPrefix + "eip-bandwidth"
-	EdgeEipInternetChargeType = AnnotationLoadBalancerPrefix + "eip-internet-chargetype"
-	EdgeEipInstanceChargeType = AnnotationLoadBalancerPrefix + "eip-instance-chargetype"
+	Ppv2PrivateLinkEpIdEnabled  = AnnotationLoadBalancerPrefix + "ppv2-pvl-ep-id-enabled"
+	Ppv2PrivateLinkEpsIdEnabled = AnnotationLoadBalancerPrefix + "ppv2-pvl-eps-id-enabled"
+	Ppv2VpcIdEnabled            = AnnotationLoadBalancerPrefix + "ppv2-pvl-vpc-id-enabled"
 )
 
 var DefaultValue = map[string]string{

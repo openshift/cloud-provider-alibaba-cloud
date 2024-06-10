@@ -26,6 +26,7 @@ type E2EConfig struct {
 	ResourceGroupID   string `json:"ResourceGroupID"`
 	NLBZoneMaps       string `json:"NLBZoneMaps"`
 	SecurityGroupIDs  string `json:"SecurityGroupIDs"`
+	IPv6              bool   `json:"ipv6"`
 
 	// described by cluster info
 	Network      string `json:"network"`
@@ -50,6 +51,8 @@ type E2EConfig struct {
 	IntranetNetworkLoadBalancerID string `json:"IntranetNetworkLoadbalancerID"`
 	VServerGroupID                string `json:"VServerGroupID"`  // vServerGroupID of InternetLoadBalancerID
 	VServerGroupID2               string `json:"VServerGroupID2"` // vServerGroupID of InternetLoadBalancerID
+	NLBServerGroupID              string `json:"NLBServerGroupID"`
+	NLBServerGroupID2             string `json:"NLBServerGroupID2"`
 	AclID                         string `json:"AclID"`
 	AclID2                        string `json:"AclID2"`
 }
@@ -83,9 +86,12 @@ func (e *E2EConfig) BindFlags() {
 	flag.StringVar(&e.NLBCACertID, "nlb-ca-cert-id", "", "nlb ca-cert id")
 	flag.StringVar(&e.VServerGroupID, "vserver-group-id", "", "vserver group id")
 	flag.StringVar(&e.VServerGroupID2, "vserver-group-id-2", "", "vserver group id")
+	flag.StringVar(&e.NLBServerGroupID, "nlb-server-group-id", "", "nlb server group id")
+	flag.StringVar(&e.NLBServerGroupID2, "nlb-server-group-id-2", "", "nlb server group id")
 	flag.StringVar(&e.NLBZoneMaps, "nlb-zone-maps", "", "nlb zone maps")
 	flag.StringVar(&e.SecurityGroupIDs, "security-group-ids", "", "security group ids used by nlb tests")
 	flag.StringVar(&e.Address, "address", "", "loadbalancer address")
+	flag.BoolVar(&e.IPv6, "ipv6", false, "ipv6")
 }
 
 func (e *E2EConfig) Validate() error {

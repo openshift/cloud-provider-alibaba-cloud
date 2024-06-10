@@ -136,8 +136,13 @@ func (m *ModelApplier) applyLoadBalancerAttribute(reqCtx *svcCtx.RequestContext,
 				remote.LoadBalancerAttribute.LoadBalancerId, err.Error())
 		}
 		// need update nlb security groups
-		if len(local.LoadBalancerAttribute.SecurityGroupIds) != 0 {
-			return m.nlbMgr.Update(reqCtx, local, remote)
+		// or ipv6 address type
+		if len(local.LoadBalancerAttribute.SecurityGroupIds) != 0 ||
+			local.LoadBalancerAttribute.IPv6AddressType != "" {
+			err := m.nlbMgr.Update(reqCtx, local, remote)
+			if err != nil {
+				return err
+			}
 		}
 
 		return nil
@@ -189,6 +194,10 @@ func (m *ModelApplier) applyVGroups(reqCtx *svcCtx.RequestContext, local, remote
 			// if server group type changed, need to recreate
 			if local.ServerGroups[i].ServerGroupType != "" &&
 				local.ServerGroups[i].ServerGroupType != old.ServerGroupType {
+				if local.ServerGroups[i].IsUserManaged {
+					return fmt.Errorf("ServerGroupType of user managed server group %s should be [%s], but [%s]",
+						local.ServerGroups[i].ServerGroupId, local.ServerGroups[i].ServerGroupType, old.ServerGroupType)
+				}
 				reqCtx.Log.Info(fmt.Sprintf("ServerGroupType changed [%s] - [%s], need to recreate server group",
 					old.ServerGroupType, local.ServerGroups[i].ServerGroupType),
 					"sgId", old.ServerGroupId, "sgName", old.ServerGroupName)
@@ -204,6 +213,9 @@ func (m *ModelApplier) applyVGroups(reqCtx *svcCtx.RequestContext, local, remote
 		// create
 		if !found {
 			reqCtx.Log.Info(fmt.Sprintf("create server group %s", local.ServerGroups[i].ServerGroupName))
+			if remote.LoadBalancerAttribute.VpcId != "" {
+				local.ServerGroups[i].VPCId = remote.LoadBalancerAttribute.VpcId
+			}
 			// to avoid add too many backends in one action, create server group with empty backends,
 			// then use AddNLBServers to add backends
 			if err := m.sgMgr.CreateServerGroup(reqCtx, local.ServerGroups[i]); err != nil {
@@ -291,9 +303,6 @@ func (m *ModelApplier) applyListeners(reqCtx *svcCtx.RequestContext, local, remo
 func (m *ModelApplier) cleanup(reqCtx *svcCtx.RequestContext, local, remote *nlbmodel.NetworkLoadBalancer) error {
 	// delete server groups
 	for _, r := range remote.ServerGroups {
-		if r.NamedKey == nil || !r.NamedKey.IsManagedByService(reqCtx.Service, base.CLUSTER_ID) {
-			continue
-		}
 		found := false
 		for _, l := range local.ServerGroups {
 			if l.ServerGroupId == r.ServerGroupId {
@@ -304,6 +313,24 @@ func (m *ModelApplier) cleanup(reqCtx *svcCtx.RequestContext, local, remote *nlb
 
 		// delete unused vgroup
 		if !found {
+			// do not delete user managed server group, but need to clean the backends
+			if r.NamedKey == nil || r.IsUserManaged || !r.NamedKey.IsManagedByService(reqCtx.Service, base.CLUSTER_ID) {
+				reqCtx.Log.Info(fmt.Sprintf("try to delete vgroup: [%s] description [%s] is managed by user, skip delete",
+					r.ServerGroupName, r.ServerGroupId))
+				var del []nlbmodel.ServerGroupServer
+				for _, remote := range r.Servers {
+					if !remote.IsUserManaged {
+						del = append(del, remote)
+					}
+				}
+				if len(del) > 0 {
+					if err := m.sgMgr.BatchRemoveServers(reqCtx, r, del); err != nil {
+						return err
+					}
+				}
+				continue
+			}
+
 			reqCtx.Log.Info(fmt.Sprintf("delete server group [%s], %s", r.ServerGroupName, r.ServerGroupId))
 			err := m.sgMgr.DeleteServerGroup(reqCtx, r.ServerGroupId)
 			if err != nil {
