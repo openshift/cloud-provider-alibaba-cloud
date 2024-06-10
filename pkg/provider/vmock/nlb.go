@@ -2,6 +2,7 @@ package vmock
 
 import (
 	"context"
+
 	"github.com/alibabacloud-go/tea/tea"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/controller/helper"
 	nlbmodel "k8s.io/cloud-provider-alibaba-cloud/pkg/model/nlb"
@@ -91,6 +92,19 @@ func (m MockNLB) UpdateNLBAddressType(ctx context.Context, mdl *nlbmodel.Network
 }
 
 func (m MockNLB) UpdateNLBZones(ctx context.Context, mdl *nlbmodel.NetworkLoadBalancer) error {
+	return nil
+}
+
+func (m MockNLB) UpdateLoadBalancerProtection(ctx context.Context, lbId string,
+	delCfg *nlbmodel.DeletionProtectionConfig, modCfg *nlbmodel.ModificationProtectionConfig) error {
+	return nil
+}
+
+func (m MockNLB) AttachCommonBandwidthPackageToLoadBalancer(ctx context.Context, lbId string, bandwidthPackageId string) error {
+	return nil
+}
+
+func (m MockNLB) DetachCommonBandwidthPackageFromLoadBalancer(ctx context.Context, lbId string, bandwidthPackageId string) error {
 	return nil
 }
 
@@ -205,6 +219,30 @@ func (m MockNLB) ListNLBServerGroups(ctx context.Context, tags []tag.Tag) ([]*nl
 	return sgs, nil
 }
 
+func (m MockNLB) GetNLBServerGroup(ctx context.Context, sgId string) (*nlbmodel.ServerGroup, error) {
+	// fixme: fixme
+	if sgId == "rsp-tcpssl-443" {
+		return &nlbmodel.ServerGroup{
+			ServerGroupId: "rsp-tcpssl-443",
+			Servers: []nlbmodel.ServerGroupServer{
+				{
+					ServerId:   "ecs-id-1",
+					ServerType: "Ecs",
+					Port:       443,
+					Weight:     100,
+				},
+				{
+					ServerId:   "ecs-id-2",
+					ServerType: "Ecs",
+					Port:       443,
+					Weight:     100,
+				},
+			},
+		}, nil
+	}
+	return nil, nil
+}
+
 func (m MockNLB) CreateNLBServerGroup(ctx context.Context, sg *nlbmodel.ServerGroup) error {
 	sg.ServerGroupId = "sg-created-id"
 	return nil
@@ -313,5 +351,9 @@ func (m MockNLB) StartNLBListener(ctx context.Context, listenerId string) error 
 }
 
 func (m MockNLB) UpdateNLBSecurityGroupIds(ctx context.Context, mdl *nlbmodel.NetworkLoadBalancer, added, removed []string) error {
+	return nil
+}
+
+func (m MockNLB) UpdateNLBIPv6AddressType(ctx context.Context, mdl *nlbmodel.NetworkLoadBalancer) error {
 	return nil
 }

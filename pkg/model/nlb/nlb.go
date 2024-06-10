@@ -3,12 +3,13 @@ package nlb
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/model"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/model/tag"
-	"strconv"
-	"strings"
 )
 
 const (
@@ -88,6 +89,11 @@ const (
 	ServerGroupTagType  = TagResourceType("servergroup")
 )
 
+type ModificationProtectionType string
+
+const ConsoleProtection = ModificationProtectionType("ConsoleProtection")
+const ModificationProtectionReason = "managed.by.ack"
+
 // NetworkLoadBalancer represents a AlibabaCloud NetworkLoadBalancer.
 type NetworkLoadBalancer struct {
 	NamespacedName        types.NamespacedName
@@ -106,14 +112,18 @@ func (l *NetworkLoadBalancer) GetLoadBalancerId() string {
 type LoadBalancerAttribute struct {
 	IsUserManaged bool
 
-	Name             string
-	AddressType      string
-	AddressIpVersion string
-	VpcId            string
-	ZoneMappings     []ZoneMapping
-	ResourceGroupId  string
-	Tags             []tag.Tag
-	SecurityGroupIds []string
+	Name                         string
+	AddressType                  string
+	AddressIpVersion             string
+	IPv6AddressType              string
+	VpcId                        string
+	ZoneMappings                 []ZoneMapping
+	ResourceGroupId              string
+	Tags                         []tag.Tag
+	SecurityGroupIds             []string
+	BandwidthPackageId           *string
+	DeletionProtectionConfig     *DeletionProtectionConfig
+	ModificationProtectionConfig *ModificationProtectionConfig
 
 	// auto-generated parameters
 	LoadBalancerId             string
@@ -122,29 +132,46 @@ type LoadBalancerAttribute struct {
 	DNSName                    string
 }
 
+type DeletionProtectionConfig struct {
+	Enabled bool
+	Reason  string
+}
+
+type ModificationProtectionConfig struct {
+	Status ModificationProtectionType
+	Reason string
+}
+
+type ProxyProtocolV2Config struct {
+	PrivateLinkEpIdEnabled  *bool
+	PrivateLinkEpsIdEnabled *bool
+	VpcIdEnabled            *bool
+}
+
 type ListenerAttribute struct {
 	IsUserManaged   bool
 	NamedKey        *ListenerNamedKey
 	ServerGroupName string
 	ServicePort     *v1.ServicePort
 
-	ListenerProtocol     string
-	ListenerPort         int32
-	ListenerDescription  string
-	ServerGroupId        string
-	LoadBalancerId       string
-	IdleTimeout          int32 // 1-900
-	SecurityPolicyId     string
-	CertificateIds       []string // tcpssl
-	CaCertificateIds     []string
-	CaEnabled            *bool
-	ProxyProtocolEnabled *bool
-	SecSensorEnabled     *bool
-	AlpnEnabled          *bool
-	AlpnPolicy           string
-	StartPort            *int32 //0-65535
-	EndPort              *int32 //0-65535
-	Cps                  *int32 //0-1000000
+	ListenerProtocol      string
+	ListenerPort          int32
+	ListenerDescription   string
+	ServerGroupId         string
+	LoadBalancerId        string
+	IdleTimeout           int32 // 1-900
+	SecurityPolicyId      string
+	CertificateIds        []string // tcpssl
+	CaCertificateIds      []string
+	CaEnabled             *bool
+	ProxyProtocolEnabled  *bool
+	ProxyProtocolV2Config ProxyProtocolV2Config
+	SecSensorEnabled      *bool
+	AlpnEnabled           *bool
+	AlpnPolicy            string
+	StartPort             *int32 //0-65535
+	EndPort               *int32 //0-65535
+	Cps                   *int32 //0-1000000
 
 	// auto-generated parameters
 	ListenerId string

@@ -3,7 +3,7 @@ package nlb
 import (
 	"context"
 	"fmt"
-	nlb "github.com/alibabacloud-go/nlb-20220430/client"
+	nlb "github.com/alibabacloud-go/nlb-20220430/v3/client"
 	"github.com/alibabacloud-go/tea/tea"
 	"k8s.io/apimachinery/pkg/util/wait"
 	nlbmodel "k8s.io/cloud-provider-alibaba-cloud/pkg/model/nlb"
@@ -39,9 +39,19 @@ const (
 func (p *NLBProvider) FindNLB(ctx context.Context, mdl *nlbmodel.NetworkLoadBalancer) error {
 	// 1. find by nlb id
 	if mdl.LoadBalancerAttribute.LoadBalancerId != "" {
+		lbId := mdl.LoadBalancerAttribute.LoadBalancerId
 		klog.Infof("[%s] find nlb by id, nlb info [%+v]",
 			mdl.NamespacedName, pkgUtil.PrettyJson(mdl))
-		return p.DescribeNLB(ctx, mdl)
+		err := p.DescribeNLB(ctx, mdl)
+		if err != nil {
+			return err
+		}
+		// Check LoadBalancer ID once more to prevent from an abnormal response from API.
+		if mdl.LoadBalancerAttribute.LoadBalancerId != lbId {
+			return fmt.Errorf("[%s] find loadbalancer by id error: loadbalancer id from API not match, expect [%s], actual [%s]",
+				mdl.NamespacedName, lbId, mdl.LoadBalancerAttribute.LoadBalancerId)
+		}
+		return nil
 	}
 
 	// 2. find by tags
@@ -101,6 +111,20 @@ func (p *NLBProvider) CreateNLB(ctx context.Context, mdl *nlbmodel.NetworkLoadBa
 				AllocationId:       tea.String(z.AllocationId),
 				PrivateIPv4Address: tea.String(z.IPv4Addr),
 			})
+	}
+	if mdl.LoadBalancerAttribute.DeletionProtectionConfig != nil {
+		req.DeletionProtectionConfig = &nlb.CreateLoadBalancerRequestDeletionProtectionConfig{
+			Enabled: tea.Bool(mdl.LoadBalancerAttribute.DeletionProtectionConfig.Enabled),
+		}
+	}
+	if mdl.LoadBalancerAttribute.ModificationProtectionConfig != nil {
+		req.ModificationProtectionConfig = &nlb.CreateLoadBalancerRequestModificationProtectionConfig{
+			Status: tea.String(string(mdl.LoadBalancerAttribute.ModificationProtectionConfig.Status)),
+			Reason: tea.String(mdl.LoadBalancerAttribute.ModificationProtectionConfig.Reason),
+		}
+	}
+	if strings.TrimSpace(tea.StringValue(mdl.LoadBalancerAttribute.BandwidthPackageId)) != "" {
+		req.BandwidthPackageId = mdl.LoadBalancerAttribute.BandwidthPackageId
 	}
 
 	resp, err := p.auth.NLB.CreateLoadBalancer(req)
@@ -163,6 +187,47 @@ func (p *NLBProvider) UpdateNLBAddressType(ctx context.Context, mdl *nlbmodel.Ne
 	}
 
 	klog.V(5).Infof("RequestId: %s, API: %s", tea.StringValue(resp.Body.RequestId), "UpdateLoadBalancerAddressTypeConfig")
+	return nil
+}
+
+func (p *NLBProvider) UpdateNLBIPv6AddressType(ctx context.Context, mdl *nlbmodel.NetworkLoadBalancer) error {
+	switch mdl.LoadBalancerAttribute.IPv6AddressType {
+	case nlbmodel.InternetAddressType:
+		return p.enableIPv6Internet(ctx, mdl)
+	case nlbmodel.IntranetAddressType:
+		return p.disableIPv6Internet(ctx, mdl)
+	default:
+		return fmt.Errorf("invalid ipv6 address type %s", mdl.LoadBalancerAttribute.IPv6AddressType)
+	}
+}
+
+func (p *NLBProvider) enableIPv6Internet(ctx context.Context, mdl *nlbmodel.NetworkLoadBalancer) error {
+	req := &nlb.EnableLoadBalancerIpv6InternetRequest{}
+	req.LoadBalancerId = tea.String(mdl.LoadBalancerAttribute.LoadBalancerId)
+
+	resp, err := p.auth.NLB.EnableLoadBalancerIpv6Internet(req)
+	if err != nil {
+		return util.SDKError("EnableLoadBalancerIpv6Internet", err)
+	}
+	if resp == nil || resp.Body == nil {
+		return fmt.Errorf("OpenAPI EnableLoadBalancerIpv6Internet resp is nil")
+	}
+	klog.V(5).Infof("RequestId: %s, API: %s", tea.StringValue(resp.Body.RequestId), "EnableLoadBalancerIpv6Internet")
+	return nil
+}
+
+func (p *NLBProvider) disableIPv6Internet(ctx context.Context, mdl *nlbmodel.NetworkLoadBalancer) error {
+	req := &nlb.DisableLoadBalancerIpv6InternetRequest{}
+	req.LoadBalancerId = tea.String(mdl.LoadBalancerAttribute.LoadBalancerId)
+
+	resp, err := p.auth.NLB.DisableLoadBalancerIpv6Internet(req)
+	if err != nil {
+		return util.SDKError("DisableLoadBalancerIpv6Internet", err)
+	}
+	if resp == nil || resp.Body == nil {
+		return fmt.Errorf("OpenAPI DisableLoadBalancerIpv6Internet resp is nil")
+	}
+	klog.V(5).Infof("RequestId: %s, API: %s", tea.StringValue(resp.Body.RequestId), "DisableLoadBalancerIpv6Internet")
 	return nil
 }
 
@@ -236,6 +301,73 @@ func (p *NLBProvider) UpdateNLBSecurityGroupIds(ctx context.Context, mdl *nlbmod
 		}
 	}
 
+	return nil
+}
+
+func (p *NLBProvider) UpdateLoadBalancerProtection(ctx context.Context, lbId string,
+	delCfg *nlbmodel.DeletionProtectionConfig, modCfg *nlbmodel.ModificationProtectionConfig) error {
+	req := &nlb.UpdateLoadBalancerProtectionRequest{}
+	req.LoadBalancerId = tea.String(lbId)
+	if delCfg != nil {
+		req.DeletionProtectionEnabled = tea.Bool(delCfg.Enabled)
+		if strings.TrimSpace(delCfg.Reason) != "" {
+			req.DeletionProtectionReason = tea.String(delCfg.Reason)
+		}
+	}
+	if modCfg != nil {
+		req.ModificationProtectionStatus = tea.String(string(modCfg.Status))
+		if strings.TrimSpace(modCfg.Reason) != "" {
+			req.ModificationProtectionReason = tea.String(modCfg.Reason)
+		}
+	}
+
+	resp, err := p.auth.NLB.UpdateLoadBalancerProtection(req)
+	if err != nil {
+		return util.SDKError("UpdateLoadBalancerProtection", err)
+	}
+	if resp == nil || resp.Body == nil {
+		return fmt.Errorf("OpenAPI UpdateLoadBalancerProtection resp is nil")
+	}
+
+	klog.V(5).Infof("RequestId: %s, API: %s", tea.StringValue(resp.Body.RequestId), "UpdateLoadBalancerProtection")
+	return nil
+}
+
+func (p *NLBProvider) AttachCommonBandwidthPackageToLoadBalancer(ctx context.Context, lbId string, bandwidthPackageId string) error {
+	req := &nlb.AttachCommonBandwidthPackageToLoadBalancerRequest{}
+	req.LoadBalancerId = tea.String(lbId)
+	req.BandwidthPackageId = tea.String(bandwidthPackageId)
+
+	resp, err := p.auth.NLB.AttachCommonBandwidthPackageToLoadBalancer(req)
+	if err != nil {
+		return util.SDKError("AttachCommonBandwidthPackageToLoadBalancer", err)
+	}
+	if resp == nil || resp.Body == nil {
+		return fmt.Errorf("OpenAPI AttachCommonBandwidthPackageToLoadBalancer resp is nil")
+	}
+
+	klog.V(5).Infof("RequestId: %s, API: %s", tea.StringValue(resp.Body.RequestId), "AttachCommonBandwidthPackageToLoadBalancer")
+	return nil
+}
+
+func (p *NLBProvider) DetachCommonBandwidthPackageFromLoadBalancer(ctx context.Context, lbId string, bandwidthPackageId string) error {
+	req := &nlb.DetachCommonBandwidthPackageFromLoadBalancerRequest{}
+	req.LoadBalancerId = tea.String(lbId)
+	req.BandwidthPackageId = tea.String(bandwidthPackageId)
+
+	resp, err := p.auth.NLB.DetachCommonBandwidthPackageFromLoadBalancer(req)
+	if err != nil {
+		return util.SDKError("DetachCommonBandwidthPackageFromLoadBalancer", err)
+	}
+	if resp == nil || resp.Body == nil {
+		return fmt.Errorf("OpenAPI DetachCommonBandwidthPackageFromLoadBalancer resp is nil")
+	}
+
+	klog.V(5).Infof("RequestId: %s, API: %s", tea.StringValue(resp.Body.RequestId), "DetachCommonBandwidthPackageFromLoadBalancer")
+	err = p.waitJobFinish("DetachCommonBandwidthPackageFromLoadBalancer", tea.StringValue(resp.Body.JobId))
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -392,13 +524,16 @@ func loadResponse(resp interface{}, lb *nlbmodel.NetworkLoadBalancer) error {
 	switch resp := resp.(type) {
 	case *nlb.GetLoadBalancerAttributeResponseBody:
 		lb.LoadBalancerAttribute.LoadBalancerId = tea.StringValue(resp.LoadBalancerId)
+		lb.LoadBalancerAttribute.VpcId = tea.StringValue(resp.VpcId)
 		lb.LoadBalancerAttribute.Name = tea.StringValue(resp.LoadBalancerName)
 		lb.LoadBalancerAttribute.AddressType = tea.StringValue(resp.AddressType)
+		lb.LoadBalancerAttribute.IPv6AddressType = tea.StringValue(resp.Ipv6AddressType)
 		lb.LoadBalancerAttribute.AddressIpVersion = tea.StringValue(resp.AddressIpVersion)
 		lb.LoadBalancerAttribute.LoadBalancerStatus = tea.StringValue(resp.LoadBalancerStatus)
 		lb.LoadBalancerAttribute.ResourceGroupId = tea.StringValue(resp.ResourceGroupId)
 		lb.LoadBalancerAttribute.DNSName = tea.StringValue(resp.DNSName)
 		lb.LoadBalancerAttribute.SecurityGroupIds = tea.StringSliceValue(resp.SecurityGroupIds)
+		lb.LoadBalancerAttribute.BandwidthPackageId = resp.BandwidthPackageId
 
 		for _, z := range resp.ZoneMappings {
 			lb.LoadBalancerAttribute.ZoneMappings = append(lb.LoadBalancerAttribute.ZoneMappings,
@@ -411,13 +546,16 @@ func loadResponse(resp interface{}, lb *nlbmodel.NetworkLoadBalancer) error {
 
 	case *nlb.ListLoadBalancersResponseBodyLoadBalancers:
 		lb.LoadBalancerAttribute.LoadBalancerId = tea.StringValue(resp.LoadBalancerId)
+		lb.LoadBalancerAttribute.VpcId = tea.StringValue(resp.VpcId)
 		lb.LoadBalancerAttribute.Name = tea.StringValue(resp.LoadBalancerName)
 		lb.LoadBalancerAttribute.AddressType = tea.StringValue(resp.AddressType)
+		lb.LoadBalancerAttribute.IPv6AddressType = tea.StringValue(resp.Ipv6AddressType)
 		lb.LoadBalancerAttribute.AddressIpVersion = tea.StringValue(resp.AddressIpVersion)
 		lb.LoadBalancerAttribute.LoadBalancerStatus = tea.StringValue(resp.LoadBalancerStatus)
 		lb.LoadBalancerAttribute.ResourceGroupId = tea.StringValue(resp.ResourceGroupId)
 		lb.LoadBalancerAttribute.DNSName = tea.StringValue(resp.DNSName)
 		lb.LoadBalancerAttribute.SecurityGroupIds = tea.StringSliceValue(resp.SecurityGroupIds)
+		lb.LoadBalancerAttribute.BandwidthPackageId = resp.BandwidthPackageId
 
 		for _, z := range resp.ZoneMappings {
 			lb.LoadBalancerAttribute.ZoneMappings = append(lb.LoadBalancerAttribute.ZoneMappings,

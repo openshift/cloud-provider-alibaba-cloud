@@ -6,6 +6,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	discovery "k8s.io/api/discovery/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	ctrlCfg "k8s.io/cloud-provider-alibaba-cloud/pkg/config"
@@ -86,22 +87,35 @@ func (e *EndpointWithENI) setTrafficPolicy(reqCtx *svcCtx.RequestContext) {
 }
 
 func (e *EndpointWithENI) setAddressIpVersion(reqCtx *svcCtx.RequestContext) {
-	// Only EndpointSlice support dual stack.
-	// Enable IPv6DualStack and EndpointSlice feature gates if you want to use ipv6 backends
-	if utilfeature.DefaultMutableFeatureGate.Enabled(ctrlCfg.IPv6DualStack) &&
-		utilfeature.DefaultMutableFeatureGate.Enabled(ctrlCfg.EndpointSlice) &&
-		reqCtx.Anno.Get(annotation.IPVersion) == string(model.IPv6) &&
-		reqCtx.Anno.Get(annotation.BackendIPVersion) == string(model.IPv6) {
-		e.AddressIPVersion = model.IPv6
-		reqCtx.Log.Info("backend address ip version is ipv6")
+	e.AddressIPVersion = model.IPv4
+	if reqCtx.Anno.Get(annotation.BackendIPVersion) != string(model.IPv6) {
 		return
 	}
-	e.AddressIPVersion = model.IPv4
+	// Only EndpointSlice support dual stack.
+	// Enable IPv6DualStack and EndpointSlice feature gates if you want to use ipv6 backends
+	if !utilfeature.DefaultMutableFeatureGate.Enabled(ctrlCfg.IPv6DualStack) ||
+		!utilfeature.DefaultMutableFeatureGate.Enabled(ctrlCfg.EndpointSlice) {
+		return
+	}
+
+	c := model.IPv6
+	if helper.NeedNLB(reqCtx.Service) {
+		c = model.DualStack
+	}
+	if strings.EqualFold(reqCtx.Anno.Get(annotation.IPVersion), string(c)) {
+		reqCtx.Log.Info("backend address ip version is ipv6")
+		e.AddressIPVersion = model.IPv6
+	}
+	return
 }
 
 func GetNodes(reqCtx *svcCtx.RequestContext, kubeClient client.Client) ([]v1.Node, error) {
 	nodeList := v1.NodeList{}
-	err := kubeClient.List(reqCtx.Ctx, &nodeList)
+	err := kubeClient.List(reqCtx.Ctx, &nodeList, &client.ListOptions{
+		Raw: &metav1.ListOptions{
+			ResourceVersion: "0",
+		},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("get nodes error: %s", err.Error())
 	}

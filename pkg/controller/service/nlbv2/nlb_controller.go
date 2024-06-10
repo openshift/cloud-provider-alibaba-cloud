@@ -86,7 +86,7 @@ func add(mgr manager.Manager, r *ReconcileNLB) error {
 		"nlb-controller", mgr,
 		controller.Options{
 			Reconciler:              r,
-			MaxConcurrentReconciles: 2,
+			MaxConcurrentReconciles: ctrlCfg.CloudCFG.Global.ServiceMaxConcurrentReconciles,
 			RateLimiter:             rateLimit,
 			RecoverPanic:            &recoverPanic,
 		},
@@ -180,7 +180,7 @@ func (m *ReconcileNLB) reconcile(request reconcile.Request) error {
 	}
 
 	reqCtx.Log.Info("successfully reconcile")
-	metric.SLBLatency.WithLabelValues("reconcile").Observe(metric.MsSince(startTime))
+	metric.SLBLatency.WithLabelValues(metric.NLBType, "reconcile").Observe(metric.MsSince(startTime))
 
 	return nil
 }

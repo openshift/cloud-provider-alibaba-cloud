@@ -101,7 +101,7 @@ func (mgr *ListenerManager) Describe(reqCtx *svcCtx.RequestContext, lbId string)
 
 func (mgr *ListenerManager) BuildLocalModel(reqCtx *svcCtx.RequestContext, mdl *model.LoadBalancer) error {
 	for _, port := range reqCtx.Service.Spec.Ports {
-		listener, err := mgr.buildListenerFromServicePort(reqCtx, port)
+		listener, err := mgr.buildListenerFromServicePort(reqCtx, port, mdl.LoadBalancerAttribute.IsUserManaged)
 		if err != nil {
 			return fmt.Errorf("build listener from servicePort %d error: %s", port.Port, err.Error())
 		}
@@ -119,7 +119,7 @@ func (mgr *ListenerManager) BuildRemoteModel(reqCtx *svcCtx.RequestContext, mdl 
 	return nil
 }
 
-func (mgr *ListenerManager) buildListenerFromServicePort(reqCtx *svcCtx.RequestContext, port v1.ServicePort) (model.ListenerAttribute, error) {
+func (mgr *ListenerManager) buildListenerFromServicePort(reqCtx *svcCtx.RequestContext, port v1.ServicePort, isUserManagedLB bool) (model.ListenerAttribute, error) {
 	listener := model.ListenerAttribute{
 		NamedKey: &model.ListenerNamedKey{
 			Prefix:      model.DEFAULT_PREFIX,
@@ -140,7 +140,7 @@ func (mgr *ListenerManager) buildListenerFromServicePort(reqCtx *svcCtx.RequestC
 	}
 	listener.Protocol = proto
 
-	if reqCtx.Anno.Get(annotation.VGroupPort) != "" {
+	if isUserManagedLB && reqCtx.Anno.Get(annotation.VGroupPort) != "" {
 		vGroupId, err := vgroup(reqCtx.Anno.Get(annotation.VGroupPort), port)
 		if err != nil {
 			return listener, err
@@ -259,6 +259,12 @@ func (mgr *ListenerManager) buildListenerFromServicePort(reqCtx *svcCtx.RequestC
 	// x-forwarded-for
 	if reqCtx.Anno.Get(annotation.XForwardedForProto) != "" {
 		listener.XForwardedForProto = model.FlagType(reqCtx.Anno.Get(annotation.XForwardedForProto))
+	}
+	if reqCtx.Anno.Get(annotation.XForwardedForSLBPort) != "" {
+		listener.XForwardedForSLBPort = model.FlagType(reqCtx.Anno.Get(annotation.XForwardedForSLBPort))
+	}
+	if reqCtx.Anno.Get(annotation.XForwardedForClientSrcPort) != "" {
+		listener.XForwardedForClientSrcPort = model.FlagType(reqCtx.Anno.Get(annotation.XForwardedForClientSrcPort))
 	}
 
 	// health check
@@ -850,13 +856,28 @@ func isNeedUpdate(reqCtx *svcCtx.RequestContext, local model.ListenerAttribute, 
 	}
 
 	// x-forwarded-for
-	if helper.Is7LayerProtocol(local.Protocol) &&
-		local.XForwardedForProto != "" &&
-		remote.XForwardedForProto != local.XForwardedForProto {
-		needUpdate = true
-		update.XForwardedForProto = local.XForwardedForProto
-		updateDetail += fmt.Sprintf("lb XForwardedForProto %v should be changed to %v;",
-			remote.XForwardedForProto, local.XForwardedForProto)
+	if helper.Is7LayerProtocol(local.Protocol) {
+		if local.XForwardedForProto != "" &&
+			remote.XForwardedForProto != local.XForwardedForProto {
+			needUpdate = true
+			update.XForwardedForProto = local.XForwardedForProto
+			updateDetail += fmt.Sprintf("lb XForwardedForProto %v should be changed to %v;",
+				remote.XForwardedForProto, local.XForwardedForProto)
+		}
+		if local.XForwardedForSLBPort != "" &&
+			remote.XForwardedForSLBPort != local.XForwardedForSLBPort {
+			needUpdate = true
+			update.XForwardedForSLBPort = local.XForwardedForSLBPort
+			updateDetail += fmt.Sprintf("lb XForwardedForSLBPort %v should be changed to %v;",
+				remote.XForwardedForSLBPort, local.XForwardedForSLBPort)
+		}
+		if local.XForwardedForClientSrcPort != "" &&
+			remote.XForwardedForClientSrcPort != local.XForwardedForClientSrcPort {
+			needUpdate = true
+			update.XForwardedForClientSrcPort = local.XForwardedForClientSrcPort
+			updateDetail += fmt.Sprintf("lb XForwardedForClientSrcPort %v should be changed to %v;",
+				remote.XForwardedForClientSrcPort, update.XForwardedForClientSrcPort)
+		}
 	}
 
 	// health check

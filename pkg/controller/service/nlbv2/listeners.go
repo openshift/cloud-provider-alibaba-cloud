@@ -28,9 +28,25 @@ type ListenerManager struct {
 	cloud prvd.Provider
 }
 
+// serverGroup find the vGroup id associated with the specific ServicePort
+func serverGroup(annotation string, port v1.ServicePort) (string, error) {
+	for _, v := range strings.Split(annotation, ",") {
+		pp := strings.Split(v, ":")
+		if len(pp) < 2 {
+			return "", fmt.Errorf("server group id and "+
+				"protocol format must be like 'sg-xxx:443' with colon separated. got=[%+v]", pp)
+		}
+
+		if pp[1] == fmt.Sprintf("%d", port.Port) {
+			return pp[0], nil
+		}
+	}
+	return "", nil
+}
+
 func (mgr *ListenerManager) BuildLocalModel(reqCtx *svcCtx.RequestContext, mdl *nlbmodel.NetworkLoadBalancer) error {
 	for _, port := range reqCtx.Service.Spec.Ports {
-		listener, err := mgr.buildListenerFromServicePort(reqCtx, port)
+		listener, err := mgr.buildListenerFromServicePort(reqCtx, port, mdl.LoadBalancerAttribute.IsUserManaged)
 		if err != nil {
 			return fmt.Errorf("build listener from servicePort %d error: %s", port.Port, err.Error())
 		}
@@ -49,7 +65,7 @@ func (mgr *ListenerManager) BuildRemoteModel(reqCtx *svcCtx.RequestContext, mdl 
 }
 
 func (mgr *ListenerManager) buildListenerFromServicePort(reqCtx *svcCtx.RequestContext, port v1.ServicePort,
-) (*nlbmodel.ListenerAttribute, error) {
+	isUserManagedLB bool) (*nlbmodel.ListenerAttribute, error) {
 	listener := &nlbmodel.ListenerAttribute{
 		NamedKey: &nlbmodel.ListenerNamedKey{
 			NamedKey: nlbmodel.NamedKey{
@@ -74,6 +90,14 @@ func (mgr *ListenerManager) buildListenerFromServicePort(reqCtx *svcCtx.RequestC
 	listener.ListenerDescription = listener.NamedKey.Key()
 	listener.ServerGroupName = getServerGroupNamedKey(reqCtx.Service, proto, &port).Key()
 
+	if isUserManagedLB && reqCtx.Anno.Get(annotation.VGroupPort) != "" {
+		serverGroupId, err := serverGroup(reqCtx.Anno.Get(annotation.VGroupPort), port)
+		if err != nil {
+			return listener, err
+		}
+		listener.ServerGroupId = serverGroupId
+	}
+
 	if reqCtx.Anno.Get(annotation.IdleTimeout) != "" {
 		idleTimeout, err := strconv.Atoi(reqCtx.Anno.Get(annotation.IdleTimeout))
 		if err != nil {
@@ -86,7 +110,7 @@ func (mgr *ListenerManager) buildListenerFromServicePort(reqCtx *svcCtx.RequestC
 	}
 
 	if reqCtx.Anno.Get(annotation.ProxyProtocol) != "" {
-		listener.ProxyProtocolEnabled = tea.Bool(reqCtx.Anno.Get(annotation.ProxyProtocol) == string(model.OnFlag))
+		listener.ProxyProtocolEnabled = tea.Bool(strings.EqualFold(reqCtx.Anno.Get(annotation.ProxyProtocol), string(model.OnFlag)))
 	}
 	if reqCtx.Anno.Get(annotation.CertID) != "" {
 		listener.CertificateIds = strings.Split(reqCtx.Anno.Get(annotation.CertID), ",")
@@ -95,7 +119,7 @@ func (mgr *ListenerManager) buildListenerFromServicePort(reqCtx *svcCtx.RequestC
 		listener.CaCertificateIds = strings.Split(reqCtx.Anno.Get(annotation.CaCertID), ",")
 	}
 	if reqCtx.Anno.Get(annotation.CaCert) != "" {
-		listener.CaEnabled = tea.Bool(reqCtx.Anno.Get(annotation.CaCert) == string(model.OnFlag))
+		listener.CaEnabled = tea.Bool(strings.EqualFold(reqCtx.Anno.Get(annotation.CaCert), string(model.OnFlag)))
 	}
 	if reqCtx.Anno.Get(annotation.Cps) != "" {
 		cps, err := strconv.Atoi(reqCtx.Anno.Get(annotation.Cps))
@@ -103,6 +127,16 @@ func (mgr *ListenerManager) buildListenerFromServicePort(reqCtx *svcCtx.RequestC
 			return listener, fmt.Errorf("parse Mss error: %s", err.Error())
 		}
 		listener.Cps = tea.Int32(int32(cps))
+	}
+
+	if reqCtx.Anno.Get(annotation.Ppv2PrivateLinkEpIdEnabled) != "" {
+		listener.ProxyProtocolV2Config.PrivateLinkEpIdEnabled = tea.Bool(strings.EqualFold(reqCtx.Anno.Get(annotation.Ppv2PrivateLinkEpIdEnabled), string(model.OnFlag)))
+	}
+	if reqCtx.Anno.Get(annotation.Ppv2PrivateLinkEpsIdEnabled) != "" {
+		listener.ProxyProtocolV2Config.PrivateLinkEpsIdEnabled = tea.Bool(strings.EqualFold(reqCtx.Anno.Get(annotation.Ppv2PrivateLinkEpsIdEnabled), string(model.OnFlag)))
+	}
+	if reqCtx.Anno.Get(annotation.Ppv2VpcIdEnabled) != "" {
+		listener.ProxyProtocolV2Config.VpcIdEnabled = tea.Bool(strings.EqualFold(reqCtx.Anno.Get(annotation.Ppv2VpcIdEnabled), string(model.OnFlag)))
 	}
 
 	return listener, nil
@@ -147,6 +181,27 @@ func (mgr *ListenerManager) UpdateNLBListener(reqCtx *svcCtx.RequestContext, loc
 		update.ProxyProtocolEnabled = local.ProxyProtocolEnabled
 		updateDetail += fmt.Sprintf("ProxyProtocolEnabled %v should be changed to %v;",
 			tea.BoolValue(remote.ProxyProtocolEnabled), tea.BoolValue(local.ProxyProtocolEnabled))
+	}
+	if local.ProxyProtocolV2Config.PrivateLinkEpIdEnabled != nil &&
+		(remote.ProxyProtocolV2Config.PrivateLinkEpIdEnabled == nil || tea.BoolValue(remote.ProxyProtocolV2Config.PrivateLinkEpIdEnabled) != tea.BoolValue(local.ProxyProtocolV2Config.PrivateLinkEpIdEnabled)) {
+		needUpdate = true
+		update.ProxyProtocolV2Config.PrivateLinkEpIdEnabled = local.ProxyProtocolV2Config.PrivateLinkEpIdEnabled
+		updateDetail += fmt.Sprintf("PrivateLinkEpIdEnabled %v should be changed to %v;",
+			tea.BoolValue(remote.ProxyProtocolV2Config.PrivateLinkEpIdEnabled), tea.BoolValue(local.ProxyProtocolV2Config.PrivateLinkEpIdEnabled))
+	}
+	if local.ProxyProtocolV2Config.PrivateLinkEpsIdEnabled != nil &&
+		(remote.ProxyProtocolV2Config.PrivateLinkEpsIdEnabled == nil || tea.BoolValue(remote.ProxyProtocolV2Config.PrivateLinkEpsIdEnabled) != tea.BoolValue(local.ProxyProtocolV2Config.PrivateLinkEpsIdEnabled)) {
+		needUpdate = true
+		update.ProxyProtocolV2Config.PrivateLinkEpsIdEnabled = local.ProxyProtocolV2Config.PrivateLinkEpsIdEnabled
+		updateDetail += fmt.Sprintf("PrivateLinkEpsIdEnabled %v should be changed to %v;",
+			tea.BoolValue(remote.ProxyProtocolV2Config.PrivateLinkEpsIdEnabled), tea.BoolValue(local.ProxyProtocolV2Config.PrivateLinkEpsIdEnabled))
+	}
+	if local.ProxyProtocolV2Config.VpcIdEnabled != nil &&
+		(remote.ProxyProtocolV2Config.VpcIdEnabled == nil || tea.BoolValue(remote.ProxyProtocolV2Config.VpcIdEnabled) != tea.BoolValue(local.ProxyProtocolV2Config.VpcIdEnabled)) {
+		needUpdate = true
+		update.ProxyProtocolV2Config.VpcIdEnabled = local.ProxyProtocolV2Config.VpcIdEnabled
+		updateDetail += fmt.Sprintf("VpcIdEnabled %v should be changed to %v;",
+			tea.BoolValue(remote.ProxyProtocolV2Config.VpcIdEnabled), tea.BoolValue(local.ProxyProtocolV2Config.VpcIdEnabled))
 	}
 	// idle timeout
 	if local.IdleTimeout != 0 && remote.IdleTimeout != local.IdleTimeout {

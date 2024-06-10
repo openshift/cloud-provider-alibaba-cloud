@@ -3,12 +3,14 @@ package clbv1
 import (
 	"fmt"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	ctrlcfg "k8s.io/cloud-provider-alibaba-cloud/pkg/config"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/controller/helper"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/controller/service/reconcile/annotation"
 	svcCtx "k8s.io/cloud-provider-alibaba-cloud/pkg/controller/service/reconcile/context"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/model"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/model/tag"
 	prvd "k8s.io/cloud-provider-alibaba-cloud/pkg/provider"
+	"k8s.io/cloud-provider-alibaba-cloud/pkg/provider/alibaba/base"
 	"k8s.io/cloud-provider-alibaba-cloud/pkg/util"
 	"strconv"
 )
@@ -50,7 +52,8 @@ func (mgr *LoadBalancerManager) Create(reqCtx *svcCtx.RequestContext, local *mod
 	if err := setModelDefaultValue(mgr, local, reqCtx.Anno); err != nil {
 		return fmt.Errorf("set model default value error: %s", err.Error())
 	}
-	err := mgr.cloud.CreateLoadBalancer(reqCtx.Ctx, local)
+	clientToken := fmt.Sprintf("%s-%s", base.CLUSTER_ID[:8], reqCtx.Anno.GetDefaultLoadBalancerName())
+	err := mgr.cloud.CreateLoadBalancer(reqCtx.Ctx, local, clientToken)
 	if err != nil {
 		return fmt.Errorf("create slb error: %s", err.Error())
 	}
@@ -282,6 +285,10 @@ func setModelDefaultValue(mgr *LoadBalancerManager, mdl *model.LoadBalancer, ann
 	if mdl.LoadBalancerAttribute.ModificationProtectionStatus == "" {
 		mdl.LoadBalancerAttribute.ModificationProtectionStatus = model.ModificationProtectionType(anno.GetDefaultValue(annotation.ModificationProtection))
 		mdl.LoadBalancerAttribute.ModificationProtectionReason = model.ModificationProtectionReason
+	}
+
+	if mdl.LoadBalancerAttribute.ResourceGroupId == "" {
+		mdl.LoadBalancerAttribute.ResourceGroupId = ctrlcfg.CloudCFG.Global.ResourceGroupID
 	}
 
 	mdl.LoadBalancerAttribute.Tags = append(anno.GetDefaultTags(), mdl.LoadBalancerAttribute.Tags...)
