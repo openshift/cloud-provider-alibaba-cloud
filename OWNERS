@@ -7,16 +7,14 @@ approvers:
 - nrb
 - theobarberbany
 reviewers:
-- JoelSpeed
 - RadekManak
 - aoxn
 - cheyang
 - damdo
-- elmiko
 - gujingit
+- mdbooth
 - nrb
 - racheljpg
-- sub-mod
 - theobarberbany
 - xlgao-zju
 component: Cloud Compute
