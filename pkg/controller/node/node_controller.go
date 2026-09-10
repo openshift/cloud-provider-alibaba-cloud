@@ -193,7 +193,7 @@ func (m *ReconcileNode) doAddCloudNode(node *corev1.Node) error {
 		_ = m.syncNode([]corev1.Node{*node})
 		return true, nil
 	}
-	return wait.PollImmediate(5*time.Second, 20*time.Second, initializer)
+	return wait.PollImmediate(5*time.Second, 20*time.Second, initializer) //nolint:staticcheck
 }
 
 // syncNode sync the nodeAddress & cloud node existence

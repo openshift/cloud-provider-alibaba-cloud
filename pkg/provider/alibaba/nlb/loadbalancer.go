@@ -451,7 +451,7 @@ func (p *NLBProvider) waitJobFinish(api, jobId string, args ...time.Duration) er
 		resp   *nlb.GetJobStatusResponse
 		retErr error
 	)
-	_ = wait.PollImmediate(interval, timeout, func() (bool, error) {
+	_ = wait.PollImmediate(interval, timeout, func() (bool, error) { //nolint:staticcheck
 		req := &nlb.GetJobStatusRequest{}
 		req.JobId = tea.String(jobId)
 		resp, retErr = p.auth.NLB.GetJobStatus(req)
@@ -475,7 +475,7 @@ func (p *NLBProvider) waitNLBActive(lbId string) (*nlb.GetLoadBalancerAttributeR
 		retErr error
 		resp   *nlb.GetLoadBalancerAttributeResponse
 	)
-	_ = wait.PollImmediate(20*time.Second, 2*time.Minute, func() (bool, error) {
+	_ = wait.PollImmediate(20*time.Second, 2*time.Minute, func() (bool, error) { //nolint:staticcheck
 		req := &nlb.GetLoadBalancerAttributeRequest{}
 		req.LoadBalancerId = tea.String(lbId)
 

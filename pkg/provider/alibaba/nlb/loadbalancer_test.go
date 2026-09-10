@@ -136,7 +136,7 @@ func TestGetLoadBalancer(t *testing.T) {
 	)
 
 	lbId := "nlb-xxx"
-	_ = wait.PollImmediate(20*time.Second, 1*time.Minute, func() (bool, error) {
+	_ = wait.PollImmediate(20*time.Second, 1*time.Minute, func() (bool, error) { //nolint:staticcheck
 		req := &nlb.GetLoadBalancerAttributeRequest{}
 		req.LoadBalancerId = tea.String(lbId)
 

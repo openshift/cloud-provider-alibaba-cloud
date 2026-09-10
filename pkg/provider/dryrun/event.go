@@ -122,7 +122,7 @@ func ResultEvent(client client.Client, status string, reason string) error {
 		},
 	}
 
-	return wait.PollImmediate(
+	return wait.PollImmediate( //nolint:staticcheck
 		3*time.Second,
 		1*time.Minute,
 		func() (done bool, err error) {

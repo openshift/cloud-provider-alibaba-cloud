@@ -70,7 +70,7 @@ func MergeStringMap(maps ...map[string]string) map[string]string {
 	return ret
 }
 func RetryImmediateOnError(interval time.Duration, timeout time.Duration, retryable func(error) bool, fn func() error) error {
-	return wait.PollImmediate(interval, timeout, func() (bool, error) {
+	return wait.PollImmediate(interval, timeout, func() (bool, error) { //nolint:staticcheck
 		err := fn()
 		if err != nil {
 			if retryable(err) {

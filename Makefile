@@ -36,7 +36,7 @@ BUILD_DATE=$(shell date +%Y-%m-%dT%H:%M:%S%z)
 ldflags="-s -w -X $(VERSION_PKG).Version=$(TAG) -X $(VERSION_PKG).GitCommit=${GIT_COMMIT} -X ${VERSION_PKG}.BuildDate=${BUILD_DATE}"
 
 #tools
-GOLANGCI_LINT = GOGC=30 go run -mod=vendor ${REPO_ROOT}/vendor/github.com/golangci/golangci-lint/cmd/golangci-lint
+GOLANGCI_LINT = GOFLAGS="" GOGC=30 go run -mod=vendor ${REPO_ROOT}/vendor/github.com/golangci/golangci-lint/cmd/golangci-lint
 
 .PHONY: cloud-controller-manager
 cloud-controller-manager: gofmt unit-test

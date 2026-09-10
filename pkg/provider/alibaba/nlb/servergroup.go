@@ -186,7 +186,7 @@ func (p *NLBProvider) CreateNLBServerGroup(ctx context.Context, sg *nlbmodel.Ser
 		retErr  error
 	)
 
-	_ = wait.PollImmediate(3*time.Second, 10*time.Second, func() (bool, error) {
+	_ = wait.PollImmediate(3*time.Second, 10*time.Second, func() (bool, error) { //nolint:staticcheck
 		getReq := &nlb.ListServerGroupsRequest{}
 		getReq.ServerGroupIds = []*string{tea.String(sg.ServerGroupId)}
 
